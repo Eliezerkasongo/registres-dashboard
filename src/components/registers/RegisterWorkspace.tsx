@@ -1,0 +1,820 @@
+"use client";
+import BarcodeExportModal from "@/components/registers/BarcodeExportModal";
+import ConfirmDialog from "@/components/registers/ConfirmDialog";
+import EditRegisterModal from "@/components/registers/EditRegisterModal";
+import EntryFormModal from "@/components/registers/EntryFormModal";
+import FieldFormModal from "@/components/registers/FieldFormModal";
+import PasswordConfirmDialog from "@/components/registers/PasswordConfirmDialog";
+import Input from "@/components/form/input/InputField";
+import Select from "@/components/form/Select";
+import Badge from "@/components/ui/badge/Badge";
+import Button from "@/components/ui/button/Button";
+import Pagination from "@/components/tables/Pagination";
+import { Dropdown } from "@/components/ui/dropdown/Dropdown";
+import { DropdownItem } from "@/components/ui/dropdown/DropdownItem";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useToast } from "@/context/ToastContext";
+import { ApiError } from "@/lib/api/client";
+import {
+  addField,
+  archiveRegister,
+  createEntry,
+  deleteEntry,
+  deleteField,
+  entryHistory,
+  getRegister,
+  listEntries,
+  updateEntry,
+  updateField,
+  updateRegister,
+} from "@/lib/api/registers";
+import { resolveAssetUrl } from "@/lib/utils/assetUrl";
+import type {
+  DeletedEntry,
+  Entry,
+  Field,
+  FieldInput,
+  RegisterDetail,
+} from "@/lib/api/types";
+import { FullscreenIcon, PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import { useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+
+const DEFAULT_PER_PAGE = 30;
+const PER_PAGE_OPTIONS = [
+  { value: "10", label: "10" },
+  { value: "20", label: "20" },
+  { value: "30", label: "30" },
+  { value: "50", label: "50" },
+  { value: "100", label: "100" },
+];
+
+type Tab = "entries" | "fields" | "history";
+type PendingFieldDelete = { id: number };
+
+interface RegisterWorkspaceProps {
+  registerId: number;
+}
+
+export default function RegisterWorkspace({
+  registerId,
+}: RegisterWorkspaceProps) {
+  const router = useRouter();
+  const toast = useToast();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    function handleChange() {
+      setIsFullscreen(document.fullscreenElement === containerRef.current);
+    }
+    document.addEventListener("fullscreenchange", handleChange);
+    return () => document.removeEventListener("fullscreenchange", handleChange);
+  }, []);
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      containerRef.current?.requestFullscreen();
+    }
+  }
+
+  const [register, setRegister] = useState<RegisterDetail | null>(null);
+  const [isLoadingRegister, setIsLoadingRegister] = useState(true);
+  const [registerError, setRegisterError] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<Tab>("entries");
+
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [isLoadingEntries, setIsLoadingEntries] = useState(true);
+  const [entriesError, setEntriesError] = useState<string | null>(null);
+
+  const [history, setHistory] = useState<DeletedEntry[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+
+  const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
+  const [editingField, setEditingField] = useState<Field | null>(null);
+
+  const [isEditRegisterOpen, setIsEditRegisterOpen] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [pendingEntryDeletes, setPendingEntryDeletes] = useState<Entry[] | null>(null);
+  const [pendingFieldDelete, setPendingFieldDelete] = useState<PendingFieldDelete | null>(null);
+  const [barcodeExportEntries, setBarcodeExportEntries] = useState<Entry[] | null>(null);
+  const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+
+  const loadRegister = useCallback(async () => {
+    setIsLoadingRegister(true);
+    setRegisterError(null);
+    try {
+      const data = await getRegister(registerId);
+      setRegister(data);
+    } catch (err) {
+      setRegisterError(
+        err instanceof ApiError ? err.message : "Impossible de charger le registre."
+      );
+    } finally {
+      setIsLoadingRegister(false);
+    }
+  }, [registerId]);
+
+  const loadEntries = useCallback(async () => {
+    setIsLoadingEntries(true);
+    setEntriesError(null);
+    try {
+      const res = await listEntries(registerId, {
+        page,
+        per_page: perPage,
+        search: search || undefined,
+      });
+      setEntries(res.data);
+      setTotal(res.meta.total);
+      setSelectedIds(new Set());
+    } catch (err) {
+      setEntriesError(
+        err instanceof ApiError ? err.message : "Impossible de charger les entrées."
+      );
+    } finally {
+      setIsLoadingEntries(false);
+    }
+  }, [registerId, page, perPage, search]);
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) =>
+      prev.size === entries.length ? new Set() : new Set(entries.map((e) => e.id))
+    );
+  }
+
+  const loadHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
+    try {
+      setHistory(await entryHistory(registerId));
+    } catch {
+      toast.error("Erreur", "Impossible de charger l'historique des suppressions.");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerId]);
+
+  useEffect(() => {
+    loadRegister();
+  }, [loadRegister]);
+
+  useEffect(() => {
+    loadEntries();
+  }, [loadEntries]);
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      loadHistory();
+    }
+  }, [activeTab, loadHistory]);
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setPage(1);
+    setSearch(searchInput.trim());
+  }
+
+  async function handleEntrySubmit(data: Record<string, unknown>) {
+    if (editingEntry) {
+      await updateEntry(registerId, editingEntry.id, data);
+      toast.success("Entrée modifiée");
+    } else {
+      await createEntry(registerId, data);
+      toast.success("Entrée ajoutée");
+    }
+    await loadEntries();
+  }
+
+  async function handleFieldSubmit(input: FieldInput) {
+    if (editingField) {
+      await updateField(registerId, editingField.id, input);
+      toast.success("Champ modifié");
+    } else {
+      await addField(registerId, input);
+      toast.success("Champ ajouté");
+    }
+    await loadRegister();
+  }
+
+  async function handleSetMain() {
+    try {
+      const updated = await updateRegister(registerId, { is_main: true });
+      setRegister(updated);
+      toast.success("Registre principal défini", `"${updated.name}" s'affichera désormais sur Home.`);
+    } catch (err) {
+      toast.error(
+        "Action impossible",
+        err instanceof ApiError ? err.message : "Impossible de définir ce registre comme principal."
+      );
+    }
+  }
+
+  async function handleArchive(password: string) {
+    await archiveRegister(registerId, password);
+    toast.success("Registre archivé", "Retrouvez-le dans Home > Archives.");
+    router.push("/registers");
+  }
+
+  async function handleDeleteEntries(password: string, reason: string) {
+    if (!pendingEntryDeletes || pendingEntryDeletes.length === 0) return;
+    for (const entry of pendingEntryDeletes) {
+      await deleteEntry(registerId, entry.id, password, reason);
+    }
+    toast.success(
+      pendingEntryDeletes.length > 1
+        ? `${pendingEntryDeletes.length} entrées supprimées`
+        : "Entrée supprimée"
+    );
+    setPendingEntryDeletes(null);
+    await loadEntries();
+  }
+
+  async function handleConfirmFieldDelete() {
+    if (!pendingFieldDelete) return;
+    try {
+      await deleteField(registerId, pendingFieldDelete.id);
+      toast.success("Champ supprimé");
+      await loadRegister();
+    } catch (err) {
+      toast.error(
+        "Suppression impossible",
+        err instanceof ApiError ? err.message : "Une erreur est survenue."
+      );
+    } finally {
+      setPendingFieldDelete(null);
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const selectedEntries = entries.filter((e) => selectedIds.has(e.id));
+  const sortedFields = register
+    ? [...register.fields].sort((a, b) => a.sort_order - b.sort_order)
+    : [];
+  const barcodeField = sortedFields.find((f) => f.type === "barcode") ?? null;
+
+  function renderEntryValue(field: Field, entry: Entry) {
+    const raw = entry.data[field.key];
+
+    if (field.type === "boolean") {
+      return (
+        <Badge size="sm" color={raw ? "success" : "light"}>
+          {raw ? "Oui" : "Non"}
+        </Badge>
+      );
+    }
+
+    if (field.type === "file" && raw) {
+      const url = resolveAssetUrl(String(raw));
+      return url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-brand-500 underline hover:text-brand-600"
+        >
+          Voir le fichier
+        </a>
+      ) : null;
+    }
+
+    return String(raw ?? "");
+  }
+
+  if (isLoadingRegister) {
+    return (
+      <p className="text-sm text-gray-500 dark:text-gray-400">Chargement...</p>
+    );
+  }
+
+  if (registerError || !register) {
+    return (
+      <div className="rounded-lg border border-error-500 bg-error-50 px-4 py-3 text-sm text-error-600 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
+        {registerError || "Registre introuvable."}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-[100] overflow-y-auto bg-white dark:bg-gray-900"
+          : undefined
+      }
+    >
+      <div
+        className={
+          isFullscreen
+            ? "sticky top-0 z-10 bg-white px-4 pt-4 dark:bg-gray-900"
+            : undefined
+        }
+      >
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+              {register.name}
+            </h2>
+            {register.is_main && <Badge color="success">Principal</Badge>}
+          </div>
+          <div className="flex items-center gap-2">
+            {barcodeField && (
+              <Button type="button" size="sm" variant="outline" onClick={() => setBarcodeExportEntries(entries)}>
+                Codes-barres
+              </Button>
+            )}
+            {!register.is_main && (
+              <Button type="button" size="sm" variant="outline" onClick={handleSetMain}>
+                Définir principal
+              </Button>
+            )}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsActionsMenuOpen((v) => !v)}
+                className="dropdown-toggle flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-white/5"
+                aria-label="Plus d'actions"
+              >
+                •••
+              </button>
+              <Dropdown isOpen={isActionsMenuOpen} onClose={() => setIsActionsMenuOpen(false)} className="w-56 p-1">
+                <DropdownItem
+                  onItemClick={() => setIsActionsMenuOpen(false)}
+                  onClick={toggleFullscreen}
+                  className="flex items-center gap-2"
+                >
+                  <FullscreenIcon className="h-4 w-4" />
+                  {isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+                </DropdownItem>
+                <DropdownItem onItemClick={() => setIsActionsMenuOpen(false)} onClick={() => setIsEditRegisterOpen(true)}>
+                  Modifier le registre
+                </DropdownItem>
+                <DropdownItem
+                  onItemClick={() => setIsActionsMenuOpen(false)}
+                  onClick={() => setIsArchiveOpen(true)}
+                  className="!text-error-500"
+                >
+                  Archiver le registre
+                </DropdownItem>
+              </Dropdown>
+            </div>
+          </div>
+        </div>
+
+        {register.description && (
+          <p className="mb-3 text-sm text-gray-500 dark:text-gray-400">
+            {register.description}
+          </p>
+        )}
+
+        <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800">
+          <button
+            onClick={() => setActiveTab("entries")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === "entries"
+                ? "border-brand-500 text-brand-500"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            }`}
+          >
+            Entrées
+          </button>
+          <button
+            onClick={() => setActiveTab("fields")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === "fields"
+                ? "border-brand-500 text-brand-500"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            }`}
+          >
+            Champs
+          </button>
+          <button
+            onClick={() => setActiveTab("history")}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              activeTab === "history"
+                ? "border-brand-500 text-brand-500"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            }`}
+          >
+            Historique
+          </button>
+        </div>
+      </div>
+
+      <div className={isFullscreen ? "px-4 pb-4" : undefined}>
+
+      {activeTab === "entries" && (
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <form onSubmit={handleSearchSubmit} className="w-full sm:w-72">
+                <Input
+                  placeholder="Rechercher..."
+                  defaultValue={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                />
+              </form>
+              <div className="w-36">
+                <Select
+                  options={PER_PAGE_OPTIONS}
+                  defaultValue={String(perPage)}
+                  onChange={(value) => {
+                    setPerPage(Number(value));
+                    setPage(1);
+                  }}
+                />
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              startIcon={<PlusIcon />}
+              onClick={() => {
+                setEditingEntry(null);
+                setIsEntryModalOpen(true);
+              }}
+            >
+              Nouvelle entrée
+            </Button>
+          </div>
+
+          {selectedIds.size > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 dark:border-brand-800 dark:bg-brand-500/10">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {selectedIds.size} sélectionnée{selectedIds.size > 1 ? "s" : ""}
+              </span>
+              {barcodeField && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setBarcodeExportEntries(selectedEntries)}
+                >
+                  Exporter les codes-barres
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="!text-error-500 !ring-error-300 hover:!bg-error-50"
+                onClick={() => setPendingEntryDeletes(selectedEntries)}
+              >
+                Supprimer la sélection
+              </Button>
+            </div>
+          )}
+
+          {entriesError && (
+            <div className="mb-4 rounded-lg border border-error-500 bg-error-50 px-4 py-3 text-sm text-error-600 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
+              {entriesError}
+            </div>
+          )}
+
+          {isLoadingEntries ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Chargement...
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+              <div className="max-w-full overflow-x-auto">
+                <Table>
+                  <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                    <TableRow>
+                      <TableCell
+                        isHeader
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap dark:text-gray-400"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={entries.length > 0 && selectedIds.size === entries.length}
+                          onChange={toggleSelectAll}
+                          aria-label="Tout sélectionner"
+                        />
+                      </TableCell>
+                      <TableCell
+                        isHeader
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap dark:text-gray-400"
+                      >
+                        #
+                      </TableCell>
+                      {sortedFields.map((field) => (
+                        <TableCell
+                          key={field.id}
+                          isHeader
+                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap dark:text-gray-400"
+                        >
+                          {field.label}
+                        </TableCell>
+                      ))}
+                      <TableCell
+                        isHeader
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                      >
+                        Actions
+                      </TableCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                    {entries.map((entry, index) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="px-5 py-4 text-start">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(entry.id)}
+                            onChange={() => toggleSelected(entry.id)}
+                            aria-label="Sélectionner cette entrée"
+                          />
+                        </TableCell>
+                        <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
+                          {(page - 1) * perPage + index + 1}
+                        </TableCell>
+                        {sortedFields.map((field) => (
+                          <TableCell
+                            key={field.id}
+                            className="px-5 py-4 text-gray-600 text-start text-theme-sm whitespace-nowrap dark:text-gray-300"
+                          >
+                            {renderEntryValue(field, entry)}
+                          </TableCell>
+                        ))}
+                        <TableCell className="px-5 py-4 text-start">
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => {
+                                setEditingEntry(entry);
+                                setIsEntryModalOpen(true);
+                              }}
+                              className="text-gray-400 hover:text-brand-500"
+                              aria-label="Modifier l'entrée"
+                            >
+                              <PencilIcon />
+                            </button>
+                            <button
+                              onClick={() => setPendingEntryDeletes([entry])}
+                              className="text-gray-400 hover:text-error-500"
+                              aria-label="Supprimer l'entrée"
+                            >
+                              <TrashBinIcon />
+                            </button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {entries.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          className="px-5 py-8 text-center text-gray-500 dark:text-gray-400"
+                          colSpan={sortedFields.length + 3}
+                        >
+                          Aucune entrée pour l&apos;instant.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {totalPages > 1 && (
+            <div className="flex justify-center mt-4">
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "fields" && (
+        <div>
+          <div className="flex justify-end mb-4">
+            <Button
+              type="button"
+              size="sm"
+              startIcon={<PlusIcon />}
+              onClick={() => {
+                setEditingField(null);
+                setIsFieldModalOpen(true);
+              }}
+            >
+              Ajouter un champ
+            </Button>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+            <div className="max-w-full overflow-x-auto">
+              <Table>
+                <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                  <TableRow>
+                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">#</TableCell>
+                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Clé</TableCell>
+                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Libellé</TableCell>
+                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Type</TableCell>
+                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Obligatoire</TableCell>
+                    <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Actions</TableCell>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                  {sortedFields.map((field, index) => (
+                    <TableRow key={field.id}>
+                      <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">{index + 1}</TableCell>
+                      <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">{field.key}</TableCell>
+                      <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">{field.label}</TableCell>
+                      <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">
+                        {field.type}
+                        {field.source_register_id && " (référence)"}
+                      </TableCell>
+                      <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">
+                        {field.required ? (
+                          <Badge size="sm" color="success">Oui</Badge>
+                        ) : (
+                          <Badge size="sm" color="light">Non</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-5 py-4 text-start">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => {
+                              setEditingField(field);
+                              setIsFieldModalOpen(true);
+                            }}
+                            className="text-gray-400 hover:text-brand-500"
+                            aria-label="Modifier le champ"
+                          >
+                            <PencilIcon />
+                          </button>
+                          <button
+                            onClick={() => setPendingFieldDelete({ id: field.id })}
+                            className="text-gray-400 hover:text-error-500"
+                            aria-label="Supprimer le champ"
+                          >
+                            <TrashBinIcon />
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {sortedFields.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        className="px-5 py-8 text-center text-gray-500 dark:text-gray-400"
+                        colSpan={6}
+                      >
+                        Aucun champ pour l&apos;instant.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "history" && (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+          <div className="max-w-full overflow-x-auto">
+            <Table>
+              <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                <TableRow>
+                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">#</TableCell>
+                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Contenu</TableCell>
+                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Raison</TableCell>
+                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Supprimé le</TableCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                {isLoadingHistory ? (
+                  <TableRow>
+                    <TableCell className="px-5 py-8 text-center text-gray-500 dark:text-gray-400" colSpan={4}>
+                      Chargement...
+                    </TableCell>
+                  </TableRow>
+                ) : history.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="px-5 py-8 text-center text-gray-500 dark:text-gray-400" colSpan={4}>
+                      Aucune suppression pour l&apos;instant.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  history.map((entry, index) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">{index + 1}</TableCell>
+                      <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">
+                        {sortedFields.map((f) => String(entry.data[f.key] ?? "")).filter(Boolean).join(" · ")}
+                      </TableCell>
+                      <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">
+                        {entry.deletion_reason}
+                      </TableCell>
+                      <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">
+                        {entry.deleted_at ? new Date(entry.deleted_at).toLocaleString("fr-FR") : ""}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
+      </div>
+
+      <EntryFormModal
+        isOpen={isEntryModalOpen}
+        onClose={() => setIsEntryModalOpen(false)}
+        registerId={registerId}
+        fields={register.fields}
+        entry={editingEntry}
+        onSubmit={handleEntrySubmit}
+      />
+
+      <FieldFormModal
+        isOpen={isFieldModalOpen}
+        onClose={() => setIsFieldModalOpen(false)}
+        field={editingField}
+        currentRegisterId={registerId}
+        onSubmit={handleFieldSubmit}
+      />
+
+      <EditRegisterModal
+        isOpen={isEditRegisterOpen}
+        onClose={() => setIsEditRegisterOpen(false)}
+        register={register}
+        onUpdated={(updated) => setRegister(updated)}
+      />
+
+      {barcodeField && barcodeExportEntries !== null && (
+        <BarcodeExportModal
+          isOpen={barcodeExportEntries !== null}
+          onClose={() => setBarcodeExportEntries(null)}
+          entries={barcodeExportEntries}
+          barcodeField={barcodeField}
+        />
+      )}
+
+      <PasswordConfirmDialog
+        isOpen={isArchiveOpen}
+        title="Archiver ce registre ?"
+        description="Le registre sera déplacé dans Home > Archives. Vous pourrez le restaurer plus tard."
+        confirmLabel="Archiver"
+        onConfirm={(password) => handleArchive(password)}
+        onClose={() => setIsArchiveOpen(false)}
+      />
+
+      <PasswordConfirmDialog
+        isOpen={pendingEntryDeletes !== null}
+        title={
+          pendingEntryDeletes && pendingEntryDeletes.length > 1
+            ? `Supprimer ces ${pendingEntryDeletes.length} entrées ?`
+            : "Supprimer cette entrée ?"
+        }
+        description="Elles resteront consultables dans l'historique des suppressions."
+        requireReason
+        confirmLabel="Supprimer"
+        onConfirm={handleDeleteEntries}
+        onClose={() => setPendingEntryDeletes(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={pendingFieldDelete !== null}
+        title="Supprimer ce champ ?"
+        description="Cette action est irréversible."
+        onConfirm={handleConfirmFieldDelete}
+        onClose={() => setPendingFieldDelete(null)}
+      />
+    </div>
+  );
+}
