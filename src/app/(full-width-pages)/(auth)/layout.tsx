@@ -47,9 +47,6 @@ export default function AuthLayout({
                     Support logistique
                   </span>
                 </Link>
-                <p className="text-center text-gray-400 dark:text-white/60">
-                  La plateforme de gestion de vos registres
-                </p>
               </div>
             </div>
           </div>
