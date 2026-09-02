@@ -3,6 +3,7 @@ import BarcodeExportModal from "@/components/registers/BarcodeExportModal";
 import ConfirmDialog from "@/components/registers/ConfirmDialog";
 import EditRegisterModal from "@/components/registers/EditRegisterModal";
 import EntryFormModal from "@/components/registers/EntryFormModal";
+import EntryViewModal from "@/components/registers/EntryViewModal";
 import FieldFormModal from "@/components/registers/FieldFormModal";
 import PasswordConfirmDialog from "@/components/registers/PasswordConfirmDialog";
 import Input from "@/components/form/input/InputField";
@@ -28,6 +29,8 @@ import {
   deleteEntry,
   deleteField,
   entryHistory,
+  exportRegister,
+  fieldOptions,
   getRegister,
   listEntries,
   updateEntry,
@@ -40,6 +43,7 @@ import type {
   Entry,
   Field,
   FieldInput,
+  FieldOption,
   RegisterDetail,
 } from "@/lib/api/types";
 import { FullscreenIcon, PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
@@ -47,6 +51,17 @@ import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_PER_PAGE = 30;
+// Every field still gets its own column - a register with many fields just
+// scrolls horizontally instead of shrinking each column unreadably. Each
+// field column is FIELD_COLUMN_WIDTH wide, and the scroll viewport is capped
+// (once there are more fields than this) to show MAX_VISIBLE_FIELD_COLUMNS of
+// them before a horizontal scrollbar appears; a row's popup (click to open)
+// still shows every field at once regardless of scroll position.
+const MAX_VISIBLE_FIELD_COLUMNS = 5;
+const FIELD_COLUMN_WIDTH = 200;
+// Rough width of the checkbox + "#" + Actions columns, used to size the
+// scroll viewport so exactly MAX_VISIBLE_FIELD_COLUMNS field columns show.
+const FIXED_COLUMNS_WIDTH = 220;
 const PER_PAGE_OPTIONS = [
   { value: "10", label: "10" },
   { value: "20", label: "20" },
@@ -105,6 +120,7 @@ export default function RegisterWorkspace({
 
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+  const [viewingEntry, setViewingEntry] = useState<Entry | null>(null);
 
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [editingField, setEditingField] = useState<Field | null>(null);
@@ -117,6 +133,12 @@ export default function RegisterWorkspace({
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  // A "select" field wired to another register stores the source entry's id
+  // as its value (see RegisterFieldController::options()) - this maps each
+  // such field's id to its {value: sourceEntryId, label} options so entries
+  // can be displayed by the label the user actually picked, not the id.
+  const [referenceOptions, setReferenceOptions] = useState<Record<number, FieldOption[]>>({});
+  const [isExporting, setIsExporting] = useState(false);
 
   const loadRegister = useCallback(async () => {
     setIsLoadingRegister(true);
@@ -184,9 +206,33 @@ export default function RegisterWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerId]);
 
+  // The [id] page route doesn't remount this component when navigating
+  // from one register straight to another (same component instance, just a
+  // new registerId prop), so without this a leftover search term or page
+  // number from the previous register would silently carry over and filter
+  // the next register's entries against it.
+  useEffect(() => {
+    setSearchInput("");
+    setSearch("");
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [registerId]);
+
   useEffect(() => {
     loadRegister();
   }, [loadRegister]);
+
+  useEffect(() => {
+    if (!register) return;
+    const referenceFields = register.fields.filter(
+      (f) => f.type === "select" && f.source_register_id
+    );
+    referenceFields.forEach((field) => {
+      fieldOptions(registerId, field.id)
+        .then((options) => setReferenceOptions((prev) => ({ ...prev, [field.id]: options })))
+        .catch(() => undefined);
+    });
+  }, [register, registerId]);
 
   useEffect(() => {
     loadEntries();
@@ -245,6 +291,21 @@ export default function RegisterWorkspace({
     router.push("/registers");
   }
 
+  async function handleExport() {
+    if (!register) return;
+    setIsExporting(true);
+    try {
+      await exportRegister(registerId, register.slug);
+    } catch (err) {
+      toast.error(
+        "Export impossible",
+        err instanceof ApiError ? err.message : "Une erreur est survenue."
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   async function handleDeleteEntries(password: string, reason: string) {
     if (!pendingEntryDeletes || pendingEntryDeletes.length === 0) return;
     for (const entry of pendingEntryDeletes) {
@@ -281,6 +342,25 @@ export default function RegisterWorkspace({
     ? [...register.fields].sort((a, b) => a.sort_order - b.sort_order)
     : [];
   const barcodeField = sortedFields.find((f) => f.type === "barcode") ?? null;
+  // Only cap the scroll viewport's width once there are more fields than fit
+  // by default - a register with few fields shouldn't get padded with blank
+  // space up to that width.
+  const entriesTableMaxWidth =
+    sortedFields.length > MAX_VISIBLE_FIELD_COLUMNS
+      ? FIXED_COLUMNS_WIDTH + MAX_VISIBLE_FIELD_COLUMNS * FIELD_COLUMN_WIDTH
+      : undefined;
+
+  /** A "select" field wired to another register stores the source entry's
+   * id as its raw value - this resolves it back to the label the user
+   * actually picked (referenceOptions[field.id]), falling back to the raw
+   * value (e.g. the id, if the referenced entry was since deleted). */
+  function resolveDisplayValue(field: Field, raw: unknown): string {
+    if (field.type === "select" && field.source_register_id && raw !== null && raw !== undefined && raw !== "") {
+      const match = referenceOptions[field.id]?.find((o) => o.value === String(raw));
+      if (match) return match.label;
+    }
+    return String(raw ?? "");
+  }
 
   function renderEntryValue(field: Field, entry: Entry) {
     const raw = entry.data[field.key];
@@ -307,7 +387,7 @@ export default function RegisterWorkspace({
       ) : null;
     }
 
-    return String(raw ?? "");
+    return resolveDisplayValue(field, raw);
   }
 
   if (isLoadingRegister) {
@@ -348,6 +428,9 @@ export default function RegisterWorkspace({
             {register.is_main && <Badge color="success">Principal</Badge>}
           </div>
           <div className="flex items-center gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={isExporting} onClick={handleExport}>
+              {isExporting ? "Export en cours..." : "Exporter"}
+            </Button>
             {barcodeField && (
               <Button type="button" size="sm" variant="outline" onClick={() => setBarcodeExportEntries(entries)}>
                 Codes-barres
@@ -439,6 +522,11 @@ export default function RegisterWorkspace({
             <div className="flex flex-wrap items-center gap-3">
               <form onSubmit={handleSearchSubmit} className="w-full sm:w-72">
                 <Input
+                  // Input is uncontrolled (defaultValue only sets the
+                  // initial text) - remounting it on registerId change is
+                  // what actually clears the visible box, in sync with the
+                  // searchInput/search state reset above.
+                  key={registerId}
                   placeholder="Rechercher..."
                   defaultValue={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
@@ -501,12 +589,22 @@ export default function RegisterWorkspace({
             </div>
           )}
 
+          {sortedFields.length > MAX_VISIBLE_FIELD_COLUMNS && (
+            <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              {sortedFields.length} champs au total - faites défiler le tableau horizontalement
+              ou cliquez sur une ligne pour tout voir d&apos;un coup.
+            </p>
+          )}
+
           {isLoadingEntries ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Chargement...
             </p>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+            <div
+              className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]"
+              style={entriesTableMaxWidth ? { maxWidth: entriesTableMaxWidth } : undefined}
+            >
               <div className="max-w-full overflow-x-auto">
                 <Table>
                   <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
@@ -534,7 +632,9 @@ export default function RegisterWorkspace({
                           isHeader
                           className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap dark:text-gray-400"
                         >
-                          {field.label}
+                          <div style={{ width: FIELD_COLUMN_WIDTH }} className="truncate" title={field.label}>
+                            {field.label}
+                          </div>
                         </TableCell>
                       ))}
                       <TableCell
@@ -556,15 +656,25 @@ export default function RegisterWorkspace({
                             aria-label="Sélectionner cette entrée"
                           />
                         </TableCell>
-                        <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
+                        <TableCell
+                          className="px-5 py-4 text-gray-500 text-start text-theme-sm cursor-pointer dark:text-gray-400"
+                          onClick={() => setViewingEntry(entry)}
+                        >
                           {(page - 1) * perPage + index + 1}
                         </TableCell>
                         {sortedFields.map((field) => (
                           <TableCell
                             key={field.id}
-                            className="px-5 py-4 text-gray-600 text-start text-theme-sm whitespace-nowrap dark:text-gray-300"
+                            className="px-5 py-4 text-gray-600 text-start text-theme-sm cursor-pointer dark:text-gray-300"
+                            onClick={() => setViewingEntry(entry)}
                           >
-                            {renderEntryValue(field, entry)}
+                            <div
+                              style={{ width: FIELD_COLUMN_WIDTH }}
+                              className="truncate"
+                              title={resolveDisplayValue(field, entry.data[field.key])}
+                            >
+                              {renderEntryValue(field, entry)}
+                            </div>
                           </TableCell>
                         ))}
                         <TableCell className="px-5 py-4 text-start">
@@ -734,7 +844,10 @@ export default function RegisterWorkspace({
                     <TableRow key={entry.id}>
                       <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">{index + 1}</TableCell>
                       <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">
-                        {sortedFields.map((f) => String(entry.data[f.key] ?? "")).filter(Boolean).join(" · ")}
+                        {sortedFields
+                          .map((f) => resolveDisplayValue(f, entry.data[f.key]))
+                          .filter(Boolean)
+                          .join(" · ")}
                       </TableCell>
                       <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">
                         {entry.deletion_reason}
@@ -759,6 +872,14 @@ export default function RegisterWorkspace({
         fields={register.fields}
         entry={editingEntry}
         onSubmit={handleEntrySubmit}
+      />
+
+      <EntryViewModal
+        isOpen={viewingEntry !== null}
+        onClose={() => setViewingEntry(null)}
+        entry={viewingEntry}
+        fields={sortedFields}
+        renderValue={renderEntryValue}
       />
 
       <FieldFormModal

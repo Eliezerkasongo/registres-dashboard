@@ -52,6 +52,27 @@ export interface FieldOption {
   label: string;
 }
 
+/** One auto-detected column from the Excel/CSV import preview - not yet a
+ * real Field (no id/options), just what parsing inferred. */
+export interface ImportPreviewField {
+  key: string;
+  label: string;
+  type: FieldType;
+  sort_order: number;
+}
+
+export interface ImportPreview {
+  fields: ImportPreviewField[];
+  rows: Record<string, string | number | null>[];
+}
+
+/** Per-column choices made in the import review step, sent back to the
+ * server so the real import applies them instead of the raw inferred type. */
+export type ImportFieldOverrides = Record<
+  string,
+  { type: FieldType; options?: string[] }
+>;
+
 export interface RegisterSummary {
   id: number;
   name: string;

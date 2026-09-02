@@ -184,3 +184,29 @@ export async function apiUpload<T>(
   const res = await fetchWithAuthRetry(path, buildInit, auth, skipRefresh);
   return handleResponse<T>(res);
 }
+
+/**
+ * Like `apiRequest`, but for a binary (file) response - a plain `<a href>`
+ * to an API route can't carry the Bearer token, so a download goes through
+ * fetch instead and the caller turns the returned Blob into an object URL.
+ * Shares the same auth-header attachment and single-refresh-on-401 behavior.
+ */
+export async function apiDownload(path: string): Promise<Blob> {
+  const buildInit = (token: string | null): RequestInit => {
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    return { method: "GET", headers };
+  };
+
+  const res = await fetchWithAuthRetry(path, buildInit, true, false);
+
+  if (!res.ok) {
+    const errorBody = await parseErrorBody(res);
+    if (res.status === 401) {
+      clearTokens();
+    }
+    throw new ApiError(res.status, errorBody);
+  }
+
+  return res.blob();
+}

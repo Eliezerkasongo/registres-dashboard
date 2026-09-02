@@ -1,5 +1,6 @@
 "use client";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import PasswordConfirmDialog from "@/components/registers/PasswordConfirmDialog";
 import Button from "@/components/ui/button/Button";
 import {
   Table,
@@ -10,7 +11,11 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/context/ToastContext";
 import { ApiError } from "@/lib/api/client";
-import { listArchivedRegisters, restoreRegister } from "@/lib/api/registers";
+import {
+  deleteRegister,
+  listArchivedRegisters,
+  restoreRegister,
+} from "@/lib/api/registers";
 import type { RegisterSummary } from "@/lib/api/types";
 import React, { useEffect, useState } from "react";
 
@@ -18,6 +23,7 @@ export default function ArchivesPage() {
   const toast = useToast();
   const [registers, setRegisters] = useState<RegisterSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<RegisterSummary | null>(null);
 
   async function load() {
     try {
@@ -44,6 +50,14 @@ export default function ArchivesPage() {
         err instanceof ApiError ? err.message : "Une erreur est survenue."
       );
     }
+  }
+
+  async function handleDelete(password: string, reason: string) {
+    if (!pendingDelete) return;
+    await deleteRegister(pendingDelete.id, password, reason);
+    toast.success("Registre supprimé", `"${pendingDelete.name}" a été supprimé.`);
+    setPendingDelete(null);
+    await load();
   }
 
   return (
@@ -87,9 +101,19 @@ export default function ArchivesPage() {
                     <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">{register.name}</TableCell>
                     <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">{register.entries_count}</TableCell>
                     <TableCell className="px-5 py-4 text-start">
-                      <Button size="sm" variant="outline" onClick={() => handleRestore(register)}>
-                        Restaurer
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleRestore(register)}>
+                          Restaurer
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="!text-error-500 !ring-error-300 hover:!bg-error-50"
+                          onClick={() => setPendingDelete(register)}
+                        >
+                          Supprimer
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -98,6 +122,20 @@ export default function ArchivesPage() {
           </Table>
         </div>
       </div>
+
+      <PasswordConfirmDialog
+        isOpen={pendingDelete !== null}
+        title="Supprimer le registre"
+        description={
+          pendingDelete
+            ? `"${pendingDelete.name}" et ses ${pendingDelete.entries_count} entrée(s) seront masqués définitivement. Confirmez avec votre mot de passe et indiquez la raison.`
+            : undefined
+        }
+        requireReason
+        confirmLabel="Supprimer"
+        onConfirm={handleDelete}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
