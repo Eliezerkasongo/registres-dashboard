@@ -5,7 +5,6 @@ import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/api/client";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 
@@ -105,12 +104,9 @@ export default function SignInForm() {
             <div className="mt-5">
               <p className="text-sm font-normal text-center text-gray-700 dark:text-gray-400 sm:text-start">
                 Pas encore de compte ?{" "}
-                <Link
-                  href="/signup"
-                  className="text-brand-500 hover:text-brand-600 dark:text-brand-400"
-                >
-                  Créer un compte
-                </Link>
+                <span className="font-medium text-gray-800 dark:text-white/90">
+                  Contacter l&apos;administrateur du système
+                </span>
               </p>
             </div>
           </div>
