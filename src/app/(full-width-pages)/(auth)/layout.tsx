@@ -4,8 +4,16 @@ import GridShape from "@/components/common/GridShape";
 import ThemeTogglerTwo from "@/components/common/ThemeTogglerTwo";
 
 import { ThemeProvider } from "@/context/ThemeContext";
+import { resolveAssetUrl } from "@/lib/utils/assetUrl";
+import Image from "next/image";
 import Link from "next/link";
 import React from "react";
+
+// No session exists yet on the sign-in/sign-up pages, so the tenant's own
+// logo (normally read from useAuth().tenant.logo_url) isn't available here -
+// this deployment serves a single organization, so its branding is fixed.
+const ORG_LOGO_PATH = "/uploads/logos/4f5c3c2cacbc8a8efb2ae4a2693febf5.png";
+const ORG_NAME = "AIDPROFEN";
 
 export default function AuthLayout({
   children,
@@ -22,9 +30,21 @@ export default function AuthLayout({
               {/* <!-- ===== Common Grid Shape Start ===== --> */}
               <GridShape />
               <div className="flex flex-col items-center max-w-xs">
-                <Link href="/" className="block mb-4">
-                  <span className="text-2xl font-semibold text-white">
-                    Support Logistique
+                <Link href="/" className="mb-4 flex flex-col items-center gap-3">
+                  <span className="relative block h-16 w-16 shrink-0 overflow-hidden rounded-md bg-white/10">
+                    <Image
+                      src={resolveAssetUrl(ORG_LOGO_PATH) ?? ORG_LOGO_PATH}
+                      alt={ORG_NAME}
+                      fill
+                      unoptimized
+                      className="object-contain p-1.5"
+                    />
+                  </span>
+                  <span className="text-2xl font-semibold tracking-wide text-white">
+                    {ORG_NAME}
+                  </span>
+                  <span className="text-sm font-medium text-gray-300 dark:text-white/70">
+                    Support logistique
                   </span>
                 </Link>
                 <p className="text-center text-gray-400 dark:text-white/60">
