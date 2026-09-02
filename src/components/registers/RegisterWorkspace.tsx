@@ -1,6 +1,5 @@
 "use client";
 import BarcodeExportModal from "@/components/registers/BarcodeExportModal";
-import ConfirmDialog from "@/components/registers/ConfirmDialog";
 import EditRegisterModal from "@/components/registers/EditRegisterModal";
 import EntryFormModal from "@/components/registers/EntryFormModal";
 import EntryViewModal from "@/components/registers/EntryViewModal";
@@ -20,8 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 import { ApiError } from "@/lib/api/client";
+import { verifyPassword } from "@/lib/api/auth";
 import {
   addField,
   archiveRegister,
@@ -82,6 +83,7 @@ export default function RegisterWorkspace({
 }: RegisterWorkspaceProps) {
   const router = useRouter();
   const toast = useToast();
+  const { user } = useAuth();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -124,6 +126,10 @@ export default function RegisterWorkspace({
 
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [editingField, setEditingField] = useState<Field | null>(null);
+  // Holds the form data collected by FieldFormModal for an *edit* (not a
+  // create) while the password-confirmation step is pending - the actual
+  // updateField() call only happens once that's confirmed.
+  const [pendingFieldEdit, setPendingFieldEdit] = useState<FieldInput | null>(null);
 
   const [isEditRegisterOpen, setIsEditRegisterOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -263,12 +269,25 @@ export default function RegisterWorkspace({
 
   async function handleFieldSubmit(input: FieldInput) {
     if (editingField) {
-      await updateField(registerId, editingField.id, input);
-      toast.success("Champ modifié");
-    } else {
-      await addField(registerId, input);
-      toast.success("Champ ajouté");
+      // Modifying an existing field needs a password confirmation - stash
+      // the form data and let handleConfirmFieldEdit apply it once
+      // confirmed. FieldFormModal closes normally here; the password
+      // dialog opens right after (pendingFieldEdit !== null).
+      setPendingFieldEdit(input);
+      return;
     }
+    await addField(registerId, input);
+    toast.success("Champ ajouté");
+    await loadRegister();
+  }
+
+  async function handleConfirmFieldEdit(password: string) {
+    if (!editingField || !pendingFieldEdit || !user) return;
+    await verifyPassword(user.email, password);
+    await updateField(registerId, editingField.id, pendingFieldEdit);
+    toast.success("Champ modifié");
+    setPendingFieldEdit(null);
+    setEditingField(null);
     await loadRegister();
   }
 
@@ -320,20 +339,13 @@ export default function RegisterWorkspace({
     await loadEntries();
   }
 
-  async function handleConfirmFieldDelete() {
-    if (!pendingFieldDelete) return;
-    try {
-      await deleteField(registerId, pendingFieldDelete.id);
-      toast.success("Champ supprimé");
-      await loadRegister();
-    } catch (err) {
-      toast.error(
-        "Suppression impossible",
-        err instanceof ApiError ? err.message : "Une erreur est survenue."
-      );
-    } finally {
-      setPendingFieldDelete(null);
-    }
+  async function handleConfirmFieldDelete(password: string) {
+    if (!pendingFieldDelete || !user) return;
+    await verifyPassword(user.email, password);
+    await deleteField(registerId, pendingFieldDelete.id);
+    toast.success("Champ supprimé");
+    setPendingFieldDelete(null);
+    await loadRegister();
   }
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -344,9 +356,11 @@ export default function RegisterWorkspace({
   const barcodeField = sortedFields.find((f) => f.type === "barcode") ?? null;
   // Only cap the scroll viewport's width once there are more fields than fit
   // by default - a register with few fields shouldn't get padded with blank
-  // space up to that width.
+  // space up to that width. In fullscreen mode, skip the cap entirely: show
+  // every column at once (compressed if needed - see FIELD_COLUMN_WIDTH
+  // below) rather than requiring a horizontal scroll.
   const entriesTableMaxWidth =
-    sortedFields.length > MAX_VISIBLE_FIELD_COLUMNS
+    !isFullscreen && sortedFields.length > MAX_VISIBLE_FIELD_COLUMNS
       ? FIXED_COLUMNS_WIDTH + MAX_VISIBLE_FIELD_COLUMNS * FIELD_COLUMN_WIDTH
       : undefined;
 
@@ -606,12 +620,12 @@ export default function RegisterWorkspace({
               style={entriesTableMaxWidth ? { maxWidth: entriesTableMaxWidth } : undefined}
             >
               <div className="max-w-full overflow-x-auto">
-                <Table>
+                <Table className={isFullscreen ? "table-fixed w-full" : undefined}>
                   <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                     <TableRow>
                       <TableCell
                         isHeader
-                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap dark:text-gray-400"
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
                       >
                         <input
                           type="checkbox"
@@ -622,7 +636,7 @@ export default function RegisterWorkspace({
                       </TableCell>
                       <TableCell
                         isHeader
-                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap dark:text-gray-400"
+                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
                       >
                         #
                       </TableCell>
@@ -630,9 +644,13 @@ export default function RegisterWorkspace({
                         <TableCell
                           key={field.id}
                           isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap dark:text-gray-400"
+                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
                         >
-                          <div style={{ width: FIELD_COLUMN_WIDTH }} className="truncate" title={field.label}>
+                          <div
+                            className={isFullscreen ? "w-full truncate" : "truncate"}
+                            style={isFullscreen ? undefined : { width: FIELD_COLUMN_WIDTH }}
+                            title={field.label}
+                          >
                             {field.label}
                           </div>
                         </TableCell>
@@ -648,7 +666,7 @@ export default function RegisterWorkspace({
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                     {entries.map((entry, index) => (
                       <TableRow key={entry.id}>
-                        <TableCell className="px-5 py-4 text-start">
+                        <TableCell className="px-5 py-4 text-start border-r border-gray-100 dark:border-white/[0.05]">
                           <input
                             type="checkbox"
                             checked={selectedIds.has(entry.id)}
@@ -657,7 +675,7 @@ export default function RegisterWorkspace({
                           />
                         </TableCell>
                         <TableCell
-                          className="px-5 py-4 text-gray-500 text-start text-theme-sm cursor-pointer dark:text-gray-400"
+                          className="px-5 py-4 text-gray-500 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
                           onClick={() => setViewingEntry(entry)}
                         >
                           {(page - 1) * perPage + index + 1}
@@ -665,12 +683,12 @@ export default function RegisterWorkspace({
                         {sortedFields.map((field) => (
                           <TableCell
                             key={field.id}
-                            className="px-5 py-4 text-gray-600 text-start text-theme-sm cursor-pointer dark:text-gray-300"
+                            className="px-5 py-4 text-gray-600 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-300"
                             onClick={() => setViewingEntry(entry)}
                           >
                             <div
-                              style={{ width: FIELD_COLUMN_WIDTH }}
-                              className="truncate"
+                              className={isFullscreen ? "w-full truncate" : "truncate"}
+                              style={isFullscreen ? undefined : { width: FIELD_COLUMN_WIDTH }}
                               title={resolveDisplayValue(field, entry.data[field.key])}
                             >
                               {renderEntryValue(field, entry)}
@@ -929,12 +947,25 @@ export default function RegisterWorkspace({
         onClose={() => setPendingEntryDeletes(null)}
       />
 
-      <ConfirmDialog
+      <PasswordConfirmDialog
         isOpen={pendingFieldDelete !== null}
         title="Supprimer ce champ ?"
         description="Cette action est irréversible."
+        confirmLabel="Supprimer"
         onConfirm={handleConfirmFieldDelete}
         onClose={() => setPendingFieldDelete(null)}
+      />
+
+      <PasswordConfirmDialog
+        isOpen={pendingFieldEdit !== null}
+        title="Confirmer la modification du champ"
+        description="Confirmez avec votre mot de passe pour appliquer ces changements."
+        confirmLabel="Confirmer"
+        onConfirm={handleConfirmFieldEdit}
+        onClose={() => {
+          setPendingFieldEdit(null);
+          setEditingField(null);
+        }}
       />
     </div>
   );

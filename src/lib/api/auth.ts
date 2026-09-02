@@ -33,6 +33,24 @@ export async function login(
   return persistAuthResponse(response);
 }
 
+/**
+ * Confirms the current user's password without touching the active
+ * session - reuses /auth/login (no backend changes needed for a "confirm
+ * with password" step anywhere in the app) but, unlike login(), never
+ * calls persistAuthResponse, so the session's stored tokens are left
+ * untouched. Throws ApiError (invalid_credentials) on a wrong password.
+ */
+export async function verifyPassword(
+  email: string,
+  password: string
+): Promise<void> {
+  await apiRequest<AuthResponse>("/auth/login", {
+    method: "POST",
+    body: { email, password },
+    auth: false,
+  });
+}
+
 export async function logout(): Promise<void> {
   const refreshToken = getRefreshToken();
   try {
