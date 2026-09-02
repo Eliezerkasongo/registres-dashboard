@@ -363,6 +363,10 @@ export default function RegisterWorkspace({
     !isFullscreen && sortedFields.length > MAX_VISIBLE_FIELD_COLUMNS
       ? FIXED_COLUMNS_WIDTH + MAX_VISIBLE_FIELD_COLUMNS * FIELD_COLUMN_WIDTH
       : undefined;
+  // More compact rows in fullscreen, where every column is already showing
+  // (no scroll) and vertical room matters more than usual.
+  const entriesHeaderPadding = isFullscreen ? "px-4 py-2" : "px-5 py-3";
+  const entriesBodyPadding = isFullscreen ? "px-4 py-2" : "px-5 py-4";
 
   /** A "select" field wired to another register stores the source entry's
    * id as its raw value - this resolves it back to the label the user
@@ -621,11 +625,11 @@ export default function RegisterWorkspace({
             >
               <div className="max-w-full overflow-x-auto">
                 <Table className={isFullscreen ? "table-fixed w-full" : undefined}>
-                  <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                  <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                     <TableRow>
                       <TableCell
                         isHeader
-                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
+                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                       >
                         <input
                           type="checkbox"
@@ -636,7 +640,7 @@ export default function RegisterWorkspace({
                       </TableCell>
                       <TableCell
                         isHeader
-                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
+                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                       >
                         #
                       </TableCell>
@@ -644,7 +648,7 @@ export default function RegisterWorkspace({
                         <TableCell
                           key={field.id}
                           isHeader
-                          className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
+                          className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                         >
                           <div
                             className={isFullscreen ? "w-full truncate" : "truncate"}
@@ -657,7 +661,7 @@ export default function RegisterWorkspace({
                       ))}
                       <TableCell
                         isHeader
-                        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400`}
                       >
                         Actions
                       </TableCell>
@@ -666,7 +670,7 @@ export default function RegisterWorkspace({
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                     {entries.map((entry, index) => (
                       <TableRow key={entry.id}>
-                        <TableCell className="px-5 py-4 text-start border-r border-gray-100 dark:border-white/[0.05]">
+                        <TableCell className={`${entriesBodyPadding} text-start border-r border-gray-100 dark:border-white/[0.05]`}>
                           <input
                             type="checkbox"
                             checked={selectedIds.has(entry.id)}
@@ -675,7 +679,7 @@ export default function RegisterWorkspace({
                           />
                         </TableCell>
                         <TableCell
-                          className="px-5 py-4 text-gray-500 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400"
+                          className={`${entriesBodyPadding} text-gray-500 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                           onClick={() => setViewingEntry(entry)}
                         >
                           {(page - 1) * perPage + index + 1}
@@ -683,7 +687,7 @@ export default function RegisterWorkspace({
                         {sortedFields.map((field) => (
                           <TableCell
                             key={field.id}
-                            className="px-5 py-4 text-gray-600 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-300"
+                            className={`${entriesBodyPadding} text-gray-600 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-300`}
                             onClick={() => setViewingEntry(entry)}
                           >
                             <div
@@ -695,7 +699,7 @@ export default function RegisterWorkspace({
                             </div>
                           </TableCell>
                         ))}
-                        <TableCell className="px-5 py-4 text-start">
+                        <TableCell className={`${entriesBodyPadding} text-start`}>
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => {
@@ -765,7 +769,7 @@ export default function RegisterWorkspace({
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
             <div className="max-w-full overflow-x-auto">
               <Table>
-                <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                   <TableRow>
                     <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">#</TableCell>
                     <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Clé</TableCell>
@@ -836,7 +840,7 @@ export default function RegisterWorkspace({
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
           <div className="max-w-full overflow-x-auto">
             <Table>
-              <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+              <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                 <TableRow>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">#</TableCell>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Contenu</TableCell>
