@@ -12,7 +12,7 @@ export default function RegisterDetailPage() {
     <div>
       <Link
         href="/registers"
-        className="mb-4 inline-block text-sm text-gray-500 hover:text-brand-500 dark:text-gray-400"
+        className="mb-2 inline-block text-sm text-gray-500 hover:text-brand-500 dark:text-gray-400"
       >
         ← Mes registres
       </Link>

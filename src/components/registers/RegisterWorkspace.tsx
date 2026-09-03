@@ -564,9 +564,9 @@ export default function RegisterWorkspace({
             : undefined
         }
       >
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+            <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">
               {register.name}
             </h2>
             {register.is_main && <Badge color="success">Principal</Badge>}
@@ -627,7 +627,7 @@ export default function RegisterWorkspace({
         <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800">
           <button
             onClick={() => setActiveTab("entries")}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-2 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === "entries"
                 ? "border-brand-500 text-brand-500"
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
@@ -637,7 +637,7 @@ export default function RegisterWorkspace({
           </button>
           <button
             onClick={() => setActiveTab("fields")}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-2 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === "fields"
                 ? "border-brand-500 text-brand-500"
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
@@ -647,7 +647,7 @@ export default function RegisterWorkspace({
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-2 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
               activeTab === "history"
                 ? "border-brand-500 text-brand-500"
                 : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
@@ -662,8 +662,8 @@ export default function RegisterWorkspace({
 
       {activeTab === "entries" && (
         <div>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3">
-            <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2 py-1">
+            <div className="flex flex-wrap items-center gap-2">
               <form onSubmit={handleSearchSubmit} className="w-full sm:w-72">
                 <Input
                   // Input is uncontrolled (defaultValue only sets the
