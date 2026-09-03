@@ -142,18 +142,22 @@ export default function PrintPreviewModal({
        * sent to the printer (see the print CSS above). */}
       <div className="rounded-lg bg-black p-6 print:bg-transparent print:p-0">
         <div id="print-preview-area" className="mx-auto overflow-x-auto rounded-sm bg-white p-4 shadow-lg">
-          {/* Letterhead - only ever appears once, at the top of page 1. Just
-           * the logo (no tenant/org name text) and the register name - the
+          {/* Letterhead - only ever appears once, at the top of page 1. The
            * date/time is whatever the browser's own print header shows, if
            * enabled, so it isn't duplicated here. */}
           <div className="mb-3 flex items-end justify-between border-b-2 border-gray-800 pb-2">
-            {logoUrl ? (
-              <span className="relative block h-10 w-10 shrink-0 overflow-hidden rounded">
-                <Image src={logoUrl} alt={tenant?.name ?? "Logo"} fill unoptimized className="object-contain" />
-              </span>
-            ) : (
-              <span />
-            )}
+            <div className="flex flex-col items-center gap-1">
+              {logoUrl && (
+                <span className="relative block h-10 w-10 shrink-0 overflow-hidden rounded">
+                  <Image src={logoUrl} alt={tenant?.name ?? "Logo"} fill unoptimized className="object-contain" />
+                </span>
+              )}
+              {tenant?.name && (
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-black">
+                  {tenant.name}
+                </span>
+              )}
+            </div>
             <div className="text-right">
               <div className="text-base font-bold text-black">{registerName}</div>
               <div className="text-[10px] text-gray-500">
