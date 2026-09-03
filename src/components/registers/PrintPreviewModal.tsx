@@ -122,19 +122,26 @@ export default function PrintPreviewModal({
       <div className="rounded-lg bg-black p-6 print:bg-transparent print:p-0">
         <div id="print-preview-area" className="mx-auto overflow-x-auto rounded-sm bg-white p-4 shadow-lg">
           {/* Letterhead - only ever appears once, at the top of page 1. */}
-          <div className="mb-3 flex items-end justify-between border-b-2 border-gray-800 pb-2">
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] text-gray-500">{new Date().toLocaleDateString("fr-FR")}</span>
-              <div className="flex items-center gap-2">
-                {logoUrl && (
-                  <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded">
-                    <Image src={logoUrl} alt={tenant?.name ?? "Logo"} fill unoptimized className="object-contain" />
-                  </span>
-                )}
-                <span className="text-sm font-semibold text-black">{tenant?.name}</span>
+          <div className="mb-3 border-b-2 border-[#465fff] pb-2">
+            <div className="flex items-end justify-between">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] text-gray-500">{new Date().toLocaleDateString("fr-FR")}</span>
+                <div className="flex items-center gap-2">
+                  {logoUrl && (
+                    <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded">
+                      <Image src={logoUrl} alt={tenant?.name ?? "Logo"} fill unoptimized className="object-contain" />
+                    </span>
+                  )}
+                  <span className="text-sm font-semibold text-black">{tenant?.name}</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-base font-bold text-[#465fff]">{registerName}</div>
+                <div className="text-[10px] text-gray-500">
+                  {entries.length} enregistrement{entries.length > 1 ? "s" : ""}
+                </div>
               </div>
             </div>
-            <div className="text-sm font-semibold text-black">{registerName}</div>
           </div>
 
           <table className="w-full border-collapse text-left text-xs text-black">
@@ -144,7 +151,10 @@ export default function PrintPreviewModal({
             <tbody>
               <tr>
                 {fields.map((field) => (
-                  <th key={field.id} className="border border-gray-300 bg-gray-200 px-2 py-1 font-medium">
+                  <th
+                    key={field.id}
+                    className="border border-[#465fff]/40 bg-[#eef1ff] px-2 py-1 font-semibold text-[#2c3d8f]"
+                  >
                     {field.label}
                   </th>
                 ))}
