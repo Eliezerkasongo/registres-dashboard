@@ -49,7 +49,7 @@ export default function PrintPreviewModal({
         @media print {
           @page {
             size: landscape;
-            margin: 10mm 10mm 16mm 10mm;
+            margin: 4mm 10mm 16mm 10mm;
             /* Progressive enhancement: recent Chromium/Firefox releases
              * render @page margin boxes, so this shows "1 / 3" style page
              * numbers on every printed page. Older engines just ignore it -
@@ -65,14 +65,24 @@ export default function PrintPreviewModal({
            * cause of the whole header+table repeating on every page: in
            * paged/print media, a fixed-position element is defined to
            * render on EVERY page, the same as a running header - exactly
-           * the bug reported. Forcing every other element to position:
-           * static removes any nested positioned ancestor (the modal card
-           * itself is set to relative), so #print-preview-area's own
-           * absolute positioning below resolves against the actual page
-           * box instead - a normal, one-time, page-breaking-as-usual
-           * element. */
-          body * { visibility: hidden; position: static !important; }
+           * the bug reported. Forcing position: static on the *whole* body
+           * (tried first) fixed that but pulled the app's own fixed sidebar/
+           * header into normal flow as invisible-but-space-occupying
+           * content, adding trailing blank pages - scoped down to just the
+           * Modal's own two wrapper levels (.modal and its content div,
+           * the only actually-positioned ancestors of #print-preview-area)
+           * instead, so #print-preview-area's own absolute positioning
+           * below resolves against the real page box without touching
+           * anything else on the page. */
+          body * { visibility: hidden; }
           #print-preview-area, #print-preview-area * { visibility: visible; }
+          .modal, .modal > div {
+            position: static !important;
+            inset: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
           #print-preview-area {
             position: absolute !important;
             top: 0; left: 0;
