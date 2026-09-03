@@ -1,7 +1,10 @@
 "use client";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
+import { useAuth } from "@/context/AuthContext";
+import { resolveAssetUrl } from "@/lib/utils/assetUrl";
 import type { Entry, Field } from "@/lib/api/types";
+import Image from "next/image";
 import React from "react";
 
 interface PrintPreviewModalProps {
@@ -24,17 +27,35 @@ export default function PrintPreviewModal({
   entries,
   resolveText,
 }: PrintPreviewModalProps) {
+  const { tenant } = useAuth();
+  const logoUrl = resolveAssetUrl(tenant?.logo_url ?? null);
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-5xl m-4 p-6 max-h-[90vh] overflow-y-auto">
       <style>{`
         @media print {
-          @page { size: landscape; margin: 8mm; }
+          @page {
+            size: landscape;
+            margin: 10mm 10mm 16mm 10mm;
+            /* Progressive enhancement: recent Chromium/Firefox releases
+             * render @page margin boxes, so this shows "1 / 3" style page
+             * numbers on every printed page. Older engines just ignore it -
+             * the browser's own print dialog "headers and footers" option
+             * is the guaranteed fallback for page numbers either way. */
+            @bottom-center {
+              content: counter(page) " / " counter(pages);
+              font-size: 8px;
+              color: #6b7280;
+            }
+          }
           body * { visibility: hidden; }
           #print-preview-area, #print-preview-area * { visibility: visible; }
           #print-preview-area {
             position: fixed; top: 0; left: 0;
             width: 100%; margin: 0; padding: 0;
             background: white;
+            border-radius: 0 !important;
+            box-shadow: none !important;
           }
           /* Every column must fit on one landscape page, no matter how many
            * there are - a fixed table forces them to share the full width
@@ -74,13 +95,26 @@ export default function PrintPreviewModal({
        * sent to the printer (see the print CSS above). */}
       <div className="rounded-lg bg-black p-6 print:bg-transparent print:p-0">
         <div id="print-preview-area" className="mx-auto overflow-x-auto rounded-sm bg-white p-4 shadow-lg">
+          {/* Letterhead - sits above the table, not inside it, so (unlike
+           * the field-label row below) it doesn't repeat on every printed
+           * page and only ever appears once, at the top of page 1. */}
+          <div className="mb-3 flex items-end justify-between border-b-2 border-gray-800 pb-2">
+            <div className="flex items-center gap-2">
+              {logoUrl && (
+                <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded">
+                  <Image src={logoUrl} alt={tenant?.name ?? "Logo"} fill unoptimized className="object-contain" />
+                </span>
+              )}
+              <span className="text-sm font-semibold text-black">{tenant?.name}</span>
+            </div>
+            <div className="text-right">
+              <div className="text-sm font-semibold text-black">{registerName}</div>
+              <div className="text-[10px] text-gray-500">{new Date().toLocaleDateString("fr-FR")}</div>
+            </div>
+          </div>
+
           <table className="w-full border-collapse text-left text-xs text-black">
             <thead>
-              <tr>
-                <th className="border border-gray-300 bg-gray-100 px-2 py-1 font-semibold" colSpan={fields.length}>
-                  {registerName} - {new Date().toLocaleDateString("fr-FR")}
-                </th>
-              </tr>
               <tr>
                 {fields.map((field) => (
                   <th key={field.id} className="border border-gray-300 bg-gray-50 px-2 py-1 font-medium">
