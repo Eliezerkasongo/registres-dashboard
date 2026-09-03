@@ -91,6 +91,13 @@ export default function PrintPreviewModal({
             overflow-wrap: break-word;
             word-break: break-word;
           }
+          /* Without this, a row landing right on a page boundary can get
+           * split mid-row - its bottom half bleeding onto the next page
+           * and visually blending with whatever starts there. */
+          #print-preview-area tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
         }
       `}</style>
 
