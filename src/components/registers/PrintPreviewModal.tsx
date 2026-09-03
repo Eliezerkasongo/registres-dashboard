@@ -91,12 +91,6 @@ export default function PrintPreviewModal({
             overflow-wrap: break-word;
             word-break: break-word;
           }
-          /* Browsers repeat a <thead> on every printed page by default -
-           * the field-label row, like the letterhead above it, should only
-           * ever appear once, at the top of page 1. */
-          #print-preview-area thead {
-            display: table-row-group;
-          }
         }
       `}</style>
 
@@ -120,9 +114,7 @@ export default function PrintPreviewModal({
        * sent to the printer (see the print CSS above). */}
       <div className="rounded-lg bg-black p-6 print:bg-transparent print:p-0">
         <div id="print-preview-area" className="mx-auto overflow-x-auto rounded-sm bg-white p-4 shadow-lg">
-          {/* Letterhead - only ever appears once, at the top of page 1 (see
-           * the print CSS above, which also stops the field-label row from
-           * repeating on every page like browsers do by default). */}
+          {/* Letterhead - only ever appears once, at the top of page 1. */}
           <div className="mb-3 flex items-end justify-between border-b-2 border-gray-800 pb-2">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-gray-500">{new Date().toLocaleDateString("fr-FR")}</span>
@@ -139,7 +131,10 @@ export default function PrintPreviewModal({
           </div>
 
           <table className="w-full border-collapse text-left text-xs text-black">
-            <thead>
+            {/* A plain <tr> in <tbody> rather than a real <thead> - Chromium
+             * repeats an actual <thead> on every printed page regardless of
+             * its CSS display value, and this row must only appear once. */}
+            <tbody>
               <tr>
                 {fields.map((field) => (
                   <th key={field.id} className="border border-gray-300 bg-gray-200 px-2 py-1 font-medium">
@@ -147,8 +142,6 @@ export default function PrintPreviewModal({
                   </th>
                 ))}
               </tr>
-            </thead>
-            <tbody>
               {entries.map((entry) => (
                 <tr key={entry.id}>
                   {fields.map((field) => (
