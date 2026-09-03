@@ -1,5 +1,6 @@
 "use client";
 import BarcodeExportModal from "@/components/registers/BarcodeExportModal";
+import ColumnHeaderCell, { ColumnFilterOption } from "@/components/registers/ColumnHeaderCell";
 import EditRegisterModal from "@/components/registers/EditRegisterModal";
 import EntryFormModal from "@/components/registers/EntryFormModal";
 import EntryViewModal from "@/components/registers/EntryViewModal";
@@ -52,17 +53,25 @@ import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 const DEFAULT_PER_PAGE = 30;
-// Every field still gets its own column - a register with many fields just
-// scrolls horizontally instead of shrinking each column unreadably. Each
-// field column is FIELD_COLUMN_WIDTH wide, and the scroll viewport is capped
-// (once there are more fields than this) to show MAX_VISIBLE_FIELD_COLUMNS of
-// them before a horizontal scrollbar appears; a row's popup (click to open)
-// still shows every field at once regardless of scroll position.
-const MAX_VISIBLE_FIELD_COLUMNS = 5;
-const FIELD_COLUMN_WIDTH = 200;
-// Rough width of the checkbox + "#" + Actions columns, used to size the
-// scroll viewport so exactly MAX_VISIBLE_FIELD_COLUMNS field columns show.
-const FIXED_COLUMNS_WIDTH = 220;
+// Excel-style column sizing: each field column starts out just wide enough
+// for its label (roughly 7px/character plus room for the filter icon and
+// padding), clamped to a sane range, and the user can drag it wider/
+// narrower from there (see ColumnHeaderCell). Columns beyond the visible
+// width simply scroll horizontally, same as a spreadsheet.
+const MIN_AUTO_COLUMN_WIDTH = 96;
+const MAX_AUTO_COLUMN_WIDTH = 320;
+const CHECKBOX_COLUMN_WIDTH = 44;
+const INDEX_COLUMN_WIDTH = 56;
+const ACTIONS_COLUMN_WIDTH = 92;
+// When a column filter is active, up to this many entries are fetched (the
+// API's own per-request cap) so filtering isn't limited to just the
+// currently-displayed page - there's no server-side filtering endpoint, so
+// this is the widest net a single request can cast.
+const MAX_FILTERABLE_ENTRIES = 200;
+
+function autoColumnWidth(label: string): number {
+  return Math.min(MAX_AUTO_COLUMN_WIDTH, Math.max(MIN_AUTO_COLUMN_WIDTH, label.length * 7 + 56));
+}
 const PER_PAGE_OPTIONS = [
   { value: "10", label: "10" },
   { value: "20", label: "20" },
@@ -146,6 +155,20 @@ export default function RegisterWorkspace({
   const [referenceOptions, setReferenceOptions] = useState<Record<number, FieldOption[]>>({});
   const [isExporting, setIsExporting] = useState(false);
 
+  // Excel-style column widths (px), keyed by field key - starts empty and
+  // falls back to autoColumnWidth() per field until the user drags one.
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  // Per-column filter: string[] for a "choice" column (select/boolean -
+  // matches ANY of the selected modalités), string for a "text" column
+  // (case-insensitive contains). No entry for a key means "not filtered".
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[] | string>>({});
+  const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
+  // There's no server-side filtering endpoint, so an active filter fetches
+  // up to MAX_FILTERABLE_ENTRIES entries once (independent of the normal
+  // paginated `entries`) and filters that batch entirely client-side.
+  const [filterableEntries, setFilterableEntries] = useState<Entry[] | null>(null);
+  const [isLoadingFilterableEntries, setIsLoadingFilterableEntries] = useState(false);
+
   const loadRegister = useCallback(async () => {
     setIsLoadingRegister(true);
     setRegisterError(null);
@@ -182,6 +205,78 @@ export default function RegisterWorkspace({
     }
   }, [registerId, page, perPage, search]);
 
+  const hasActiveFilters = Object.values(columnFilters).some((v) =>
+    Array.isArray(v) ? v.length > 0 : v.trim() !== ""
+  );
+
+  // No server-side filtering endpoint exists, so an active column filter
+  // fetches its own larger batch (independent of the normal paginated
+  // `entries`) and filters that client-side instead.
+  useEffect(() => {
+    if (!hasActiveFilters) {
+      setFilterableEntries(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingFilterableEntries(true);
+    listEntries(registerId, {
+      page: 1,
+      per_page: MAX_FILTERABLE_ENTRIES,
+      search: search || undefined,
+    })
+      .then((res) => {
+        if (!cancelled) setFilterableEntries(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setFilterableEntries([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingFilterableEntries(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasActiveFilters, registerId, search]);
+
+  const displayedEntries = hasActiveFilters
+    ? (filterableEntries ?? []).filter((entry) =>
+        Object.entries(columnFilters).every(([key, filterVal]) => {
+          const raw = entry.data[key];
+          if (Array.isArray(filterVal)) {
+            if (filterVal.length === 0) return true;
+            return filterVal.includes(String(raw ?? ""));
+          }
+          if (typeof filterVal === "string" && filterVal.trim() !== "") {
+            return String(raw ?? "").toLowerCase().includes(filterVal.trim().toLowerCase());
+          }
+          return true;
+        })
+      )
+    : entries;
+
+  // Column widths persist per register across visits (like Excel remembering
+  // a spreadsheet's column widths) - loaded fresh whenever registerId changes.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`columnWidths:${registerId}`);
+      setColumnWidths(raw ? JSON.parse(raw) : {});
+    } catch {
+      setColumnWidths({});
+    }
+  }, [registerId]);
+
+  function setColumnWidth(key: string, width: number) {
+    setColumnWidths((prev) => {
+      const next = { ...prev, [key]: width };
+      try {
+        localStorage.setItem(`columnWidths:${registerId}`, JSON.stringify(next));
+      } catch {
+        // Private browsing / quota exceeded - the width just won't persist.
+      }
+      return next;
+    });
+  }
+
   function toggleSelected(id: number) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -196,7 +291,9 @@ export default function RegisterWorkspace({
 
   function toggleSelectAll() {
     setSelectedIds((prev) =>
-      prev.size === entries.length ? new Set() : new Set(entries.map((e) => e.id))
+      prev.size === displayedEntries.length
+        ? new Set()
+        : new Set(displayedEntries.map((e) => e.id))
     );
   }
 
@@ -222,6 +319,8 @@ export default function RegisterWorkspace({
     setSearch("");
     setPage(1);
     setSelectedIds(new Set());
+    setColumnFilters({});
+    setOpenFilterKey(null);
   }, [registerId]);
 
   useEffect(() => {
@@ -354,19 +453,26 @@ export default function RegisterWorkspace({
     ? [...register.fields].sort((a, b) => a.sort_order - b.sort_order)
     : [];
   const barcodeField = sortedFields.find((f) => f.type === "barcode") ?? null;
-  // Only cap the scroll viewport's width once there are more fields than fit
-  // by default - a register with few fields shouldn't get padded with blank
-  // space up to that width. In fullscreen mode, skip the cap entirely: show
-  // every column at once (compressed if needed - see FIELD_COLUMN_WIDTH
-  // below) rather than requiring a horizontal scroll.
-  const entriesTableMaxWidth =
-    !isFullscreen && sortedFields.length > MAX_VISIBLE_FIELD_COLUMNS
-      ? FIXED_COLUMNS_WIDTH + MAX_VISIBLE_FIELD_COLUMNS * FIELD_COLUMN_WIDTH
-      : undefined;
-  // More compact rows in fullscreen, where every column is already showing
-  // (no scroll) and vertical room matters more than usual.
-  const entriesHeaderPadding = isFullscreen ? "px-4 py-2" : "px-5 py-3";
-  const entriesBodyPadding = isFullscreen ? "px-4 py-2" : "px-5 py-4";
+  // Compact, Excel-like padding - just enough margin around the content.
+  const entriesHeaderPadding = "px-3 py-2";
+  const entriesBodyPadding = "px-3 py-1.5";
+
+  /** The filter checklist for a "choice" field: a reference-select's
+   * resolved {value, label} options if it's wired to another register,
+   * this field's own static options otherwise, or a plain Oui/Non pair for
+   * a boolean field. */
+  function modalitesFor(field: Field): ColumnFilterOption[] {
+    if (field.type === "boolean") {
+      return [
+        { value: "true", label: "Oui" },
+        { value: "false", label: "Non" },
+      ];
+    }
+    if (field.type === "select" && field.source_register_id) {
+      return referenceOptions[field.id] ?? [];
+    }
+    return (field.options ?? []).map((o) => ({ value: o, label: o }));
+  }
 
   /** A "select" field wired to another register stores the source entry's
    * id as its raw value - this resolves it back to the label the user
@@ -607,10 +713,11 @@ export default function RegisterWorkspace({
             </div>
           )}
 
-          {sortedFields.length > MAX_VISIBLE_FIELD_COLUMNS && (
+          {hasActiveFilters && (
             <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-              {sortedFields.length} champs au total - faites défiler le tableau horizontalement
-              ou cliquez sur une ligne pour tout voir d&apos;un coup.
+              {isLoadingFilterableEntries
+                ? "Chargement des données à filtrer..."
+                : `${displayedEntries.length} résultat(s) filtré(s) sur ${filterableEntries?.length ?? 0} chargé(s).`}
             </p>
           )}
 
@@ -619,27 +726,26 @@ export default function RegisterWorkspace({
               Chargement...
             </p>
           ) : (
-            <div
-              className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]"
-              style={entriesTableMaxWidth ? { maxWidth: entriesTableMaxWidth } : undefined}
-            >
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
               <div className="max-w-full overflow-x-auto">
-                <Table className={isFullscreen ? "table-fixed w-full" : undefined}>
+                <Table className="table-fixed">
                   <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                     <TableRow>
                       <TableCell
                         isHeader
+                        style={{ width: CHECKBOX_COLUMN_WIDTH }}
                         className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                       >
                         <input
                           type="checkbox"
-                          checked={entries.length > 0 && selectedIds.size === entries.length}
+                          checked={displayedEntries.length > 0 && selectedIds.size === displayedEntries.length}
                           onChange={toggleSelectAll}
                           aria-label="Tout sélectionner"
                         />
                       </TableCell>
                       <TableCell
                         isHeader
+                        style={{ width: INDEX_COLUMN_WIDTH }}
                         className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                       >
                         #
@@ -648,19 +754,27 @@ export default function RegisterWorkspace({
                         <TableCell
                           key={field.id}
                           isHeader
+                          style={{ width: columnWidths[field.key] ?? autoColumnWidth(field.label) }}
                           className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                         >
-                          <div
-                            className={isFullscreen ? "w-full truncate" : "truncate"}
-                            style={isFullscreen ? undefined : { width: FIELD_COLUMN_WIDTH }}
-                            title={field.label}
-                          >
-                            {field.label}
-                          </div>
+                          <ColumnHeaderCell
+                            label={field.label}
+                            width={columnWidths[field.key] ?? autoColumnWidth(field.label)}
+                            onResize={(w) => setColumnWidth(field.key, w)}
+                            filterKind={field.type === "select" || field.type === "boolean" ? "choice" : "text"}
+                            modalites={modalitesFor(field)}
+                            filterValue={columnFilters[field.key] ?? (field.type === "select" || field.type === "boolean" ? [] : "")}
+                            onFilterChange={(value) =>
+                              setColumnFilters((prev) => ({ ...prev, [field.key]: value }))
+                            }
+                            isOpen={openFilterKey === field.key}
+                            onOpenChange={(open) => setOpenFilterKey(open ? field.key : null)}
+                          />
                         </TableCell>
                       ))}
                       <TableCell
                         isHeader
+                        style={{ width: ACTIONS_COLUMN_WIDTH }}
                         className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400`}
                       >
                         Actions
@@ -668,7 +782,7 @@ export default function RegisterWorkspace({
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                    {entries.map((entry, index) => (
+                    {displayedEntries.map((entry, index) => (
                       <TableRow key={entry.id}>
                         <TableCell className={`${entriesBodyPadding} text-start border-r border-gray-100 dark:border-white/[0.05]`}>
                           <input
@@ -682,7 +796,7 @@ export default function RegisterWorkspace({
                           className={`${entriesBodyPadding} text-gray-500 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                           onClick={() => setViewingEntry(entry)}
                         >
-                          {(page - 1) * perPage + index + 1}
+                          {hasActiveFilters ? index + 1 : (page - 1) * perPage + index + 1}
                         </TableCell>
                         {sortedFields.map((field) => (
                           <TableCell
@@ -691,8 +805,7 @@ export default function RegisterWorkspace({
                             onClick={() => setViewingEntry(entry)}
                           >
                             <div
-                              className={isFullscreen ? "w-full truncate" : "truncate"}
-                              style={isFullscreen ? undefined : { width: FIELD_COLUMN_WIDTH }}
+                              className="truncate"
                               title={resolveDisplayValue(field, entry.data[field.key])}
                             >
                               {renderEntryValue(field, entry)}
@@ -722,13 +835,15 @@ export default function RegisterWorkspace({
                         </TableCell>
                       </TableRow>
                     ))}
-                    {entries.length === 0 && (
+                    {displayedEntries.length === 0 && (
                       <TableRow>
                         <TableCell
                           className="px-5 py-8 text-center text-gray-500 dark:text-gray-400"
                           colSpan={sortedFields.length + 3}
                         >
-                          Aucune entrée pour l&apos;instant.
+                          {hasActiveFilters
+                            ? "Aucune entrée ne correspond à ces filtres."
+                            : "Aucune entrée pour l'instant."}
                         </TableCell>
                       </TableRow>
                     )}
@@ -738,7 +853,7 @@ export default function RegisterWorkspace({
             </div>
           )}
 
-          {totalPages > 1 && (
+          {!hasActiveFilters && totalPages > 1 && (
             <div className="flex justify-center mt-4">
               <Pagination
                 currentPage={page}
