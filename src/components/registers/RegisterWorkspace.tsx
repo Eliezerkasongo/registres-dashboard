@@ -492,6 +492,13 @@ export default function RegisterWorkspace({
       const match = referenceOptions[field.id]?.find((o) => o.value === String(raw));
       if (match) return match.label;
     }
+    if (field.type === "number" && raw !== null && raw !== undefined && raw !== "") {
+      const num = Number(raw);
+      // Excel imports and computed values can carry long floating-point
+      // tails (e.g. 1045.6200000000001) - round to 2 decimals for display,
+      // without padding whole numbers with trailing zeros.
+      if (Number.isFinite(num)) return String(Math.round(num * 100) / 100);
+    }
     return String(raw ?? "");
   }
 
