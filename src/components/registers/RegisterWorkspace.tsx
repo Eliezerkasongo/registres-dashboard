@@ -188,9 +188,13 @@ export default function RegisterWorkspace({
   // (case-insensitive contains). No entry for a key means "not filtered".
   const [columnFilters, setColumnFilters] = useState<Record<string, string[] | string>>({});
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
-  // There's no server-side filtering endpoint, so an active filter fetches
-  // up to MAX_FILTERABLE_ENTRIES entries once (independent of the normal
-  // paginated `entries`) and filters that batch entirely client-side.
+  // Single-column sort (ascending/descending) - null means unsorted. Only
+  // one column can be sorted at a time, chosen from its header's sort icon.
+  const [columnSort, setColumnSort] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  // There's no server-side filtering/sorting endpoint, so an active filter
+  // or sort fetches up to MAX_FILTERABLE_ENTRIES entries once (independent
+  // of the normal paginated `entries`) and filters/sorts that batch
+  // entirely client-side.
   const [filterableEntries, setFilterableEntries] = useState<Entry[] | null>(null);
   const [isLoadingFilterableEntries, setIsLoadingFilterableEntries] = useState(false);
 
@@ -233,12 +237,16 @@ export default function RegisterWorkspace({
   const hasActiveFilters = Object.values(columnFilters).some((v) =>
     Array.isArray(v) ? v.length > 0 : v.trim() !== ""
   );
+  const hasActiveSort = columnSort !== null;
+  // A sort, same as a filter, needs to operate on more than just the
+  // currently-displayed page to be useful.
+  const needsEntryBatch = hasActiveFilters || hasActiveSort;
 
-  // No server-side filtering endpoint exists, so an active column filter
-  // fetches its own larger batch (independent of the normal paginated
-  // `entries`) and filters that client-side instead.
+  // No server-side filtering/sorting endpoint exists, so an active column
+  // filter or sort fetches its own larger batch (independent of the normal
+  // paginated `entries`) and filters/sorts that client-side instead.
   useEffect(() => {
-    if (!hasActiveFilters) {
+    if (!needsEntryBatch) {
       setFilterableEntries(null);
       return;
     }
@@ -261,9 +269,43 @@ export default function RegisterWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [hasActiveFilters, registerId, search]);
+  }, [needsEntryBatch, registerId, search]);
 
-  const displayedEntries = hasActiveFilters
+  /** Compares two entries on a single field for columnSort - numeric for
+   * "number", chronological for "date", Oui/Non for "boolean", and a
+   * locale-aware string comparison (via resolveDisplayValue, so a reference
+   * "select" sorts by its resolved label, not its raw stored id) otherwise.
+   * Missing/invalid values always sort after present ones. */
+  function compareByField(a: Entry, b: Entry, field: Field, direction: "asc" | "desc"): number {
+    const rawA = a.data[field.key];
+    const rawB = b.data[field.key];
+    let result: number;
+
+    if (field.type === "number") {
+      const numA = Number(rawA);
+      const numB = Number(rawB);
+      const validA = rawA !== null && rawA !== undefined && rawA !== "" && Number.isFinite(numA);
+      const validB = rawB !== null && rawB !== undefined && rawB !== "" && Number.isFinite(numB);
+      result = validA && validB ? numA - numB : validA ? -1 : validB ? 1 : 0;
+    } else if (field.type === "date") {
+      const timeA = rawA ? new Date(String(rawA)).getTime() : NaN;
+      const timeB = rawB ? new Date(String(rawB)).getTime() : NaN;
+      const validA = !Number.isNaN(timeA);
+      const validB = !Number.isNaN(timeB);
+      result = validA && validB ? timeA - timeB : validA ? -1 : validB ? 1 : 0;
+    } else if (field.type === "boolean") {
+      result = Number(Boolean(rawA)) - Number(Boolean(rawB));
+    } else {
+      result = resolveDisplayValue(field, rawA).localeCompare(resolveDisplayValue(field, rawB), "fr", {
+        sensitivity: "base",
+        numeric: true,
+      });
+    }
+
+    return direction === "asc" ? result : -result;
+  }
+
+  const filteredEntries = hasActiveFilters
     ? (filterableEntries ?? []).filter((entry) =>
         Object.entries(columnFilters).every(([key, filterVal]) => {
           const raw = entry.data[key];
@@ -277,7 +319,15 @@ export default function RegisterWorkspace({
           return true;
         })
       )
+    : hasActiveSort
+    ? filterableEntries ?? []
     : entries;
+
+  const sortField = columnSort ? register?.fields.find((f) => f.key === columnSort.key) ?? null : null;
+  const displayedEntries =
+    columnSort && sortField
+      ? [...filteredEntries].sort((a, b) => compareByField(a, b, sortField, columnSort.direction))
+      : filteredEntries;
 
   // Column widths persist per register across visits (like Excel remembering
   // a spreadsheet's column widths) - loaded fresh whenever registerId changes.
@@ -346,6 +396,7 @@ export default function RegisterWorkspace({
     setSelectedIds(new Set());
     setColumnFilters({});
     setOpenFilterKey(null);
+    setColumnSort(null);
   }, [registerId]);
 
   useEffect(() => {
@@ -892,6 +943,10 @@ export default function RegisterWorkspace({
                             }
                             isOpen={openFilterKey === field.key}
                             onOpenChange={(open) => setOpenFilterKey(open ? field.key : null)}
+                            sortDirection={columnSort?.key === field.key ? columnSort.direction : null}
+                            onSortChange={(direction) =>
+                              setColumnSort(direction ? { key: field.key, direction } : null)
+                            }
                           />
                         </TableCell>
                       ))}
@@ -921,7 +976,7 @@ export default function RegisterWorkspace({
                           className={`${entriesBodyPadding} text-gray-500 text-start ${entriesTextSize} cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                           onClick={() => setViewingEntry(entry)}
                         >
-                          {hasActiveFilters ? index + 1 : (page - 1) * perPage + index + 1}
+                          {needsEntryBatch ? index + 1 : (page - 1) * perPage + index + 1}
                         </TableCell>
                         {sortedFields.map((field) => (
                           <TableCell
@@ -980,7 +1035,7 @@ export default function RegisterWorkspace({
             </div>
           )}
 
-          {!hasActiveFilters && totalPages > 1 && (
+          {!needsEntryBatch && totalPages > 1 && (
             <div className="flex justify-center mt-4">
               <Pagination
                 currentPage={page}

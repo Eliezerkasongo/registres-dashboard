@@ -15,6 +15,31 @@ function FunnelIcon({ className }: { className?: string }) {
   );
 }
 
+/** Single up/down arrow highlighted for the active direction, both arrows
+ * neutral (unsorted) otherwise. */
+function SortIcon({ direction, className }: { direction: "asc" | "desc" | null; className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M4.5 6.2 8 2.7l3.5 3.5"
+        stroke="currentColor"
+        strokeWidth={direction === "asc" ? 1.8 : 1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={direction === "desc" ? 0.35 : 1}
+      />
+      <path
+        d="M4.5 9.8 8 13.3l3.5-3.5"
+        stroke="currentColor"
+        strokeWidth={direction === "desc" ? 1.8 : 1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={direction === "asc" ? 0.35 : 1}
+      />
+    </svg>
+  );
+}
+
 export interface ColumnFilterOption {
   value: string;
   label: string;
@@ -32,6 +57,9 @@ interface ColumnHeaderCellProps {
   onFilterChange: (value: string[] | string) => void;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** null = unsorted. Clicking cycles asc -> desc -> unsorted. */
+  sortDirection: "asc" | "desc" | null;
+  onSortChange: (direction: "asc" | "desc" | null) => void;
 }
 
 const MIN_COLUMN_WIDTH = 80;
@@ -46,6 +74,8 @@ export default function ColumnHeaderCell({
   onFilterChange,
   isOpen,
   onOpenChange,
+  sortDirection,
+  onSortChange,
 }: ColumnHeaderCellProps) {
   const [draftText, setDraftText] = useState(
     typeof filterValue === "string" ? filterValue : ""
@@ -120,6 +150,28 @@ export default function ColumnHeaderCell({
       <span className="min-w-0 flex-1 truncate" title={label}>
         {label}
       </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSortChange(sortDirection === "asc" ? "desc" : sortDirection === "desc" ? null : "asc");
+        }}
+        className={`shrink-0 rounded p-0.5 ${
+          sortDirection
+            ? "text-brand-500"
+            : "text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
+        }`}
+        aria-label={`Trier par ${label}`}
+        title={
+          sortDirection === "asc"
+            ? "Tri croissant (A→Z / 0→9)"
+            : sortDirection === "desc"
+            ? "Tri décroissant (Z→A / 9→0)"
+            : "Trier cette colonne"
+        }
+      >
+        <SortIcon direction={sortDirection} className="h-3.5 w-3.5" />
+      </button>
       <button
         type="button"
         onClick={(e) => {
