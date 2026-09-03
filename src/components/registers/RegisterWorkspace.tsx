@@ -73,6 +73,21 @@ const MAX_FILTERABLE_ENTRIES = 200;
 function autoColumnWidth(label: string): number {
   return Math.min(MAX_AUTO_COLUMN_WIDTH, Math.max(MIN_AUTO_COLUMN_WIDTH, label.length * 7 + 56));
 }
+
+/** Drag handle for reordering fields in the "Champs" tab - a plain 6-dot
+ * grip, no shared icon for this exists yet. */
+function GripIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" className={className} aria-hidden="true">
+      <circle cx="5" cy="3" r="1.3" />
+      <circle cx="11" cy="3" r="1.3" />
+      <circle cx="5" cy="8" r="1.3" />
+      <circle cx="11" cy="8" r="1.3" />
+      <circle cx="5" cy="13" r="1.3" />
+      <circle cx="11" cy="13" r="1.3" />
+    </svg>
+  );
+}
 const PER_PAGE_OPTIONS = [
   { value: "10", label: "10" },
   { value: "20", label: "20" },
@@ -140,6 +155,11 @@ export default function RegisterWorkspace({
   // create) while the password-confirmation step is pending - the actual
   // updateField() call only happens once that's confirmed.
   const [pendingFieldEdit, setPendingFieldEdit] = useState<FieldInput | null>(null);
+  // Drag-and-drop reordering in the "Champs" tab: the dragged field's id
+  // while a drag is in progress, and whether the reordered sort_order
+  // values are currently being persisted (one updateField() call per field).
+  const [draggedFieldId, setDraggedFieldId] = useState<number | null>(null);
+  const [isSavingFieldOrder, setIsSavingFieldOrder] = useState(false);
 
   const [isEditRegisterOpen, setIsEditRegisterOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -450,6 +470,48 @@ export default function RegisterWorkspace({
     toast.success("Champ supprimé");
     setPendingFieldDelete(null);
     await loadRegister();
+  }
+
+  /** Dragging a field row over another one live-reorders `register.fields`
+   * so the table visually reflects the drop position as you drag - the
+   * actual save only happens once on drop (handleFieldDrop). */
+  function handleFieldDragOver(e: React.DragEvent<HTMLTableRowElement>, overFieldId: number) {
+    e.preventDefault();
+    if (!register || draggedFieldId === null || draggedFieldId === overFieldId) return;
+
+    const current = [...register.fields].sort((a, b) => a.sort_order - b.sort_order);
+    const fromIndex = current.findIndex((f) => f.id === draggedFieldId);
+    const toIndex = current.findIndex((f) => f.id === overFieldId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const reordered = [...current];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    setRegister({ ...register, fields: reordered.map((f, index) => ({ ...f, sort_order: index })) });
+  }
+
+  /** Persists the order currently shown in the table - there's no bulk
+   * reorder endpoint, so every field gets its own updateField() call with
+   * its new position. On failure, reverts to the server's own order. */
+  async function handleFieldDrop() {
+    const wasDragging = draggedFieldId !== null;
+    setDraggedFieldId(null);
+    if (!register || !wasDragging) return;
+
+    setIsSavingFieldOrder(true);
+    try {
+      await Promise.all(
+        register.fields.map((field, index) => updateField(registerId, field.id, { sort_order: index }))
+      );
+    } catch (err) {
+      toast.error(
+        "Action impossible",
+        err instanceof ApiError ? err.message : "Impossible d'enregistrer le nouvel ordre des champs."
+      );
+      await loadRegister();
+    } finally {
+      setIsSavingFieldOrder(false);
+    }
   }
 
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -932,7 +994,12 @@ export default function RegisterWorkspace({
 
       {activeTab === "fields" && (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {isSavingFieldOrder
+                ? "Enregistrement de l'ordre..."
+                : "Glissez une ligne par sa poignée pour réordonner les champs."}
+            </p>
             <Button
               type="button"
               size="sm"
@@ -951,6 +1018,7 @@ export default function RegisterWorkspace({
               <Table>
                 <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                   <TableRow>
+                    <TableCell isHeader className="w-8 px-2 py-3"></TableCell>
                     <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">#</TableCell>
                     <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Clé</TableCell>
                     <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">Libellé</TableCell>
@@ -961,7 +1029,27 @@ export default function RegisterWorkspace({
                 </TableHeader>
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                   {sortedFields.map((field, index) => (
-                    <TableRow key={field.id}>
+                    <TableRow
+                      key={field.id}
+                      className={draggedFieldId === field.id ? "opacity-40" : ""}
+                      onDragOver={(e) => handleFieldDragOver(e, field.id)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleFieldDrop();
+                      }}
+                      onDragEnd={handleFieldDrop}
+                    >
+                      <TableCell className="w-8 px-2 py-4 text-start">
+                        <span
+                          draggable
+                          onDragStart={() => setDraggedFieldId(field.id)}
+                          className="inline-flex cursor-grab items-center text-gray-300 hover:text-gray-500 active:cursor-grabbing dark:text-gray-600 dark:hover:text-gray-400"
+                          aria-label="Réordonner le champ"
+                          title="Glisser pour réordonner"
+                        >
+                          <GripIcon className="h-4 w-4" />
+                        </span>
+                      </TableCell>
                       <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">{index + 1}</TableCell>
                       <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">{field.key}</TableCell>
                       <TableCell className="px-5 py-4 text-gray-600 text-start text-theme-sm dark:text-gray-300">{field.label}</TableCell>
@@ -1003,7 +1091,7 @@ export default function RegisterWorkspace({
                     <TableRow>
                       <TableCell
                         className="px-5 py-8 text-center text-gray-500 dark:text-gray-400"
-                        colSpan={6}
+                        colSpan={7}
                       >
                         Aucun champ pour l&apos;instant.
                       </TableCell>

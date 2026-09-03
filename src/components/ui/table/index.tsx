@@ -30,7 +30,7 @@ interface TableRowProps {
 
 // Props for TableCell
 interface TableCellProps {
-  children: ReactNode; // Cell content
+  children?: ReactNode; // Cell content
   isHeader?: boolean; // If true, renders as <th>, otherwise <td>
   className?: string; // Optional className for styling
   colSpan?: number; // Optional colSpan, forwarded to the underlying th/td
