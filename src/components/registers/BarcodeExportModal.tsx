@@ -112,7 +112,11 @@ export default function BarcodeExportModal({
         </div>
       </div>
 
-      <div id="barcode-print-area" className="flex flex-wrap gap-x-6 gap-y-4 bg-gray-50 p-4 dark:bg-white/[0.03]">
+      {/* Always a plain white "label sheet", like the print preview - this
+       * is the actual printed output, not app UI, so it shouldn't follow
+       * the app's own light/dark theme (the barcode bars are hardcoded
+       * black and become invisible against a dark background). */}
+      <div id="barcode-print-area" className="flex flex-wrap gap-x-6 gap-y-4 rounded-lg border border-gray-200 bg-white p-4">
         {codes.map((code) => (
           <div key={code} className="barcode-label flex items-end gap-2">
             {logoUrl && (
@@ -125,7 +129,7 @@ export default function BarcodeExportModal({
             )}
             <div className="flex flex-col items-center">
               <span
-                className="font-semibold leading-none text-black dark:text-black"
+                className="font-semibold leading-none text-black"
                 style={{ fontSize: numberSize }}
               >
                 {code}
@@ -135,7 +139,7 @@ export default function BarcodeExportModal({
           </div>
         ))}
         {codes.length === 0 && (
-          <p className="p-4 text-sm text-gray-500 dark:text-gray-400">
+          <p className="p-4 text-sm text-gray-500">
             Aucun code-barres à exporter pour l&apos;instant.
           </p>
         )}

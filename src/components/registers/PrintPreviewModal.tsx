@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { resolveAssetUrl } from "@/lib/utils/assetUrl";
 import type { Entry, Field } from "@/lib/api/types";
 import Image from "next/image";
-import React from "react";
+import React, { useEffect } from "react";
 
 interface PrintPreviewModalProps {
   isOpen: boolean;
@@ -29,6 +29,19 @@ export default function PrintPreviewModal({
 }: PrintPreviewModalProps) {
   const { tenant } = useAuth();
   const logoUrl = resolveAssetUrl(tenant?.logo_url ?? null);
+
+  // Browsers that print their own title/date header (the "headers and
+  // footers" print-dialog option) pull it straight from document.title -
+  // swap the app's generic "Support Logistique" for the register's own
+  // name while this preview is open, and restore it on close.
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousTitle = document.title;
+    document.title = registerName;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [isOpen, registerName]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-5xl m-4 p-6 max-h-[90vh] overflow-y-auto">
@@ -57,6 +70,12 @@ export default function PrintPreviewModal({
             border-radius: 0 !important;
             box-shadow: none !important;
           }
+          /* Some browsers skip background colors when printing unless told
+           * otherwise - without this the gray header row would print white. */
+          #print-preview-area * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
           /* Every column must fit on one landscape page, no matter how many
            * there are - a fixed table forces them to share the full width
            * instead of overflowing, and the text/padding shrink as far as
@@ -71,6 +90,12 @@ export default function PrintPreviewModal({
             padding: 1px 2px !important;
             overflow-wrap: break-word;
             word-break: break-word;
+          }
+          /* Browsers repeat a <thead> on every printed page by default -
+           * the field-label row, like the letterhead above it, should only
+           * ever appear once, at the top of page 1. */
+          #print-preview-area thead {
+            display: table-row-group;
           }
         }
       `}</style>
@@ -95,29 +120,29 @@ export default function PrintPreviewModal({
        * sent to the printer (see the print CSS above). */}
       <div className="rounded-lg bg-black p-6 print:bg-transparent print:p-0">
         <div id="print-preview-area" className="mx-auto overflow-x-auto rounded-sm bg-white p-4 shadow-lg">
-          {/* Letterhead - sits above the table, not inside it, so (unlike
-           * the field-label row below) it doesn't repeat on every printed
-           * page and only ever appears once, at the top of page 1. */}
+          {/* Letterhead - only ever appears once, at the top of page 1 (see
+           * the print CSS above, which also stops the field-label row from
+           * repeating on every page like browsers do by default). */}
           <div className="mb-3 flex items-end justify-between border-b-2 border-gray-800 pb-2">
-            <div className="flex items-center gap-2">
-              {logoUrl && (
-                <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded">
-                  <Image src={logoUrl} alt={tenant?.name ?? "Logo"} fill unoptimized className="object-contain" />
-                </span>
-              )}
-              <span className="text-sm font-semibold text-black">{tenant?.name}</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-gray-500">{new Date().toLocaleDateString("fr-FR")}</span>
+              <div className="flex items-center gap-2">
+                {logoUrl && (
+                  <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded">
+                    <Image src={logoUrl} alt={tenant?.name ?? "Logo"} fill unoptimized className="object-contain" />
+                  </span>
+                )}
+                <span className="text-sm font-semibold text-black">{tenant?.name}</span>
+              </div>
             </div>
-            <div className="text-right">
-              <div className="text-sm font-semibold text-black">{registerName}</div>
-              <div className="text-[10px] text-gray-500">{new Date().toLocaleDateString("fr-FR")}</div>
-            </div>
+            <div className="text-sm font-semibold text-black">{registerName}</div>
           </div>
 
           <table className="w-full border-collapse text-left text-xs text-black">
             <thead>
               <tr>
                 {fields.map((field) => (
-                  <th key={field.id} className="border border-gray-300 bg-gray-50 px-2 py-1 font-medium">
+                  <th key={field.id} className="border border-gray-300 bg-gray-200 px-2 py-1 font-medium">
                     {field.label}
                   </th>
                 ))}
