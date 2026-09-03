@@ -14,7 +14,7 @@ interface ButtonProps {
 
 const Button: React.FC<ButtonProps> = ({
   children,
-  size = "md",
+  size = "sm",
   variant = "primary",
   startIcon,
   endIcon,
@@ -25,8 +25,8 @@ const Button: React.FC<ButtonProps> = ({
 }) => {
   // Size Classes
   const sizeClasses = {
-    sm: "px-4 py-3 text-sm",
-    md: "px-5 py-3.5 text-sm",
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-4 py-2.5 text-sm",
   };
 
   // Variant Classes
