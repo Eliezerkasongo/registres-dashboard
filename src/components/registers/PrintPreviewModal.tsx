@@ -68,7 +68,9 @@ export default function PrintPreviewModal({
         fortement le texte et les marges si elles sont nombreuses.
       </p>
 
-      <div id="print-preview-area" className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+      {/* This mimics a printed A4 sheet, so it stays a plain white page with
+       * black text regardless of the app's own light/dark theme. */}
+      <div id="print-preview-area" className="overflow-x-auto rounded-lg border border-gray-300 bg-white p-4 shadow-sm">
         <table className="w-full border-collapse text-left text-xs text-black">
           <thead>
             <tr>
