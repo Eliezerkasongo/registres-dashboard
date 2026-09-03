@@ -514,6 +514,22 @@ export default function RegisterWorkspace({
     return resolveDisplayValue(field, raw);
   }
 
+  /** Table cells cut long text at a fixed character count (independent of
+   * the column's own width) so a handful of very long values can't blow up
+   * every row's height - the full value is still one click away (row
+   * popup) or a hover away (native title tooltip on the cell). */
+  const CELL_TRUNCATE_AT = 17;
+  function truncateCellText(value: string): string {
+    return value.length > CELL_TRUNCATE_AT ? `${value.slice(0, 18)}...` : value;
+  }
+
+  /** Table-only wrapper around renderEntryValue() - EntryViewModal's popup
+   * uses renderEntryValue() directly so it always shows the full value. */
+  function renderTruncatedEntryValue(field: Field, entry: Entry) {
+    const value = renderEntryValue(field, entry);
+    return typeof value === "string" ? truncateCellText(value) : value;
+  }
+
   if (isLoadingRegister) {
     return (
       <p className="text-sm text-gray-500 dark:text-gray-400">Chargement...</p>
@@ -808,7 +824,7 @@ export default function RegisterWorkspace({
                               className="truncate"
                               title={resolveDisplayValue(field, entry.data[field.key])}
                             >
-                              {renderEntryValue(field, entry)}
+                              {renderTruncatedEntryValue(field, entry)}
                             </div>
                           </TableCell>
                         ))}
