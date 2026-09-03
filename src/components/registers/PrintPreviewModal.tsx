@@ -68,43 +68,47 @@ export default function PrintPreviewModal({
         fortement le texte et les marges si elles sont nombreuses.
       </p>
 
-      {/* This mimics a printed A4 sheet, so it stays a plain white page with
-       * black text regardless of the app's own light/dark theme. */}
-      <div id="print-preview-area" className="overflow-x-auto rounded-lg border border-gray-300 bg-white p-4 shadow-sm">
-        <table className="w-full border-collapse text-left text-xs text-black">
-          <thead>
-            <tr>
-              <th className="border border-gray-300 bg-gray-100 px-2 py-1 font-semibold" colSpan={fields.length}>
-                {registerName} - {new Date().toLocaleDateString("fr-FR")}
-              </th>
-            </tr>
-            <tr>
-              {fields.map((field) => (
-                <th key={field.id} className="border border-gray-300 bg-gray-50 px-2 py-1 font-medium">
-                  {field.label}
+      {/* Mimics a real print-preview: a black tray behind a plain white A4
+       * "sheet", so the page is visually obvious regardless of the app's
+       * own light/dark theme. Only #print-preview-area itself is actually
+       * sent to the printer (see the print CSS above). */}
+      <div className="rounded-lg bg-black p-6 print:bg-transparent print:p-0">
+        <div id="print-preview-area" className="mx-auto overflow-x-auto rounded-sm bg-white p-4 shadow-lg">
+          <table className="w-full border-collapse text-left text-xs text-black">
+            <thead>
+              <tr>
+                <th className="border border-gray-300 bg-gray-100 px-2 py-1 font-semibold" colSpan={fields.length}>
+                  {registerName} - {new Date().toLocaleDateString("fr-FR")}
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => (
-              <tr key={entry.id}>
+              </tr>
+              <tr>
                 {fields.map((field) => (
-                  <td key={field.id} className="border border-gray-300 px-2 py-1">
-                    {resolveText(field, entry.data[field.key])}
-                  </td>
+                  <th key={field.id} className="border border-gray-300 bg-gray-50 px-2 py-1 font-medium">
+                    {field.label}
+                  </th>
                 ))}
               </tr>
-            ))}
-            {entries.length === 0 && (
-              <tr>
-                <td className="border border-gray-300 px-2 py-4 text-center text-gray-500" colSpan={fields.length}>
-                  Aucune entrée à imprimer.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  {fields.map((field) => (
+                    <td key={field.id} className="border border-gray-300 px-2 py-1">
+                      {resolveText(field, entry.data[field.key])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {entries.length === 0 && (
+                <tr>
+                  <td className="border border-gray-300 px-2 py-4 text-center text-gray-500" colSpan={fields.length}>
+                    Aucune entrée à imprimer.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </Modal>
   );

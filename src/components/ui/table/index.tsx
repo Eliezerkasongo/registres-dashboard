@@ -22,6 +22,10 @@ interface TableBodyProps {
 interface TableRowProps {
   children: ReactNode; // Cells (th or td)
   className?: string; // Optional className for styling
+  draggable?: boolean; // Optional native drag-and-drop support, forwarded to the underlying tr
+  onDragOver?: (e: React.DragEvent<HTMLTableRowElement>) => void;
+  onDrop?: (e: React.DragEvent<HTMLTableRowElement>) => void;
+  onDragEnd?: (e: React.DragEvent<HTMLTableRowElement>) => void;
 }
 
 // Props for TableCell
@@ -50,8 +54,25 @@ const TableBody: React.FC<TableBodyProps> = ({ children, className }) => {
 };
 
 // TableRow Component
-const TableRow: React.FC<TableRowProps> = ({ children, className }) => {
-  return <tr className={className}>{children}</tr>;
+const TableRow: React.FC<TableRowProps> = ({
+  children,
+  className,
+  draggable,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+}) => {
+  return (
+    <tr
+      className={className}
+      draggable={draggable}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+    >
+      {children}
+    </tr>
+  );
 };
 
 // TableCell Component
