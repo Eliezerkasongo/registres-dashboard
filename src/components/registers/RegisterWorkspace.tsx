@@ -6,6 +6,7 @@ import EntryFormModal from "@/components/registers/EntryFormModal";
 import EntryViewModal from "@/components/registers/EntryViewModal";
 import FieldFormModal from "@/components/registers/FieldFormModal";
 import PasswordConfirmDialog from "@/components/registers/PasswordConfirmDialog";
+import PrintPreviewModal from "@/components/registers/PrintPreviewModal";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
 import Badge from "@/components/ui/badge/Badge";
@@ -154,6 +155,10 @@ export default function RegisterWorkspace({
   // can be displayed by the label the user actually picked, not the id.
   const [referenceOptions, setReferenceOptions] = useState<Record<number, FieldOption[]>>({});
   const [isExporting, setIsExporting] = useState(false);
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  // The checkbox/selection column is opt-in - hidden by default to save
+  // width, toggled back on with the small button next to the search bar.
+  const [showSelectionColumn, setShowSelectionColumn] = useState(false);
 
   // Excel-style column widths (px), keyed by field key - starts empty and
   // falls back to autoColumnWidth() per field until the user drags one.
@@ -575,6 +580,9 @@ export default function RegisterWorkspace({
             <Button type="button" size="sm" variant="outline" disabled={isExporting} onClick={handleExport}>
               {isExporting ? "Export en cours..." : "Exporter"}
             </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setIsPrintPreviewOpen(true)}>
+              Imprimer
+            </Button>
             {barcodeField && (
               <Button type="button" size="sm" variant="outline" onClick={() => setBarcodeExportEntries(entries)}>
                 Codes-barres
@@ -686,6 +694,30 @@ export default function RegisterWorkspace({
                   }}
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSelectionColumn((v) => !v);
+                  setSelectedIds(new Set());
+                }}
+                className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm ${
+                  showSelectionColumn
+                    ? "border-brand-500 bg-brand-50 text-brand-500 dark:bg-brand-500/10"
+                    : "border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-white/5"
+                }`}
+                aria-label={
+                  showSelectionColumn
+                    ? "Masquer la colonne de sélection"
+                    : "Afficher la colonne de sélection"
+                }
+                title={
+                  showSelectionColumn
+                    ? "Masquer la sélection"
+                    : "Afficher la sélection"
+                }
+              >
+                ☑
+              </button>
             </div>
             <Button
               type="button"
@@ -751,18 +783,20 @@ export default function RegisterWorkspace({
                 <Table className={isFullscreen ? "table-fixed w-full" : "table-fixed"}>
                   <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                     <TableRow>
-                      <TableCell
-                        isHeader
-                        style={{ width: CHECKBOX_COLUMN_WIDTH }}
-                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={displayedEntries.length > 0 && selectedIds.size === displayedEntries.length}
-                          onChange={toggleSelectAll}
-                          aria-label="Tout sélectionner"
-                        />
-                      </TableCell>
+                      {showSelectionColumn && (
+                        <TableCell
+                          isHeader
+                          style={{ width: CHECKBOX_COLUMN_WIDTH }}
+                          className={`${entriesHeaderPadding} font-medium text-gray-500 text-start ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={displayedEntries.length > 0 && selectedIds.size === displayedEntries.length}
+                            onChange={toggleSelectAll}
+                            aria-label="Tout sélectionner"
+                          />
+                        </TableCell>
+                      )}
                       <TableCell
                         isHeader
                         style={{ width: INDEX_COLUMN_WIDTH }}
@@ -804,14 +838,16 @@ export default function RegisterWorkspace({
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                     {displayedEntries.map((entry, index) => (
                       <TableRow key={entry.id}>
-                        <TableCell className={`${entriesBodyPadding} text-start border-r border-gray-100 dark:border-white/[0.05]`}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(entry.id)}
-                            onChange={() => toggleSelected(entry.id)}
-                            aria-label="Sélectionner cette entrée"
-                          />
-                        </TableCell>
+                        {showSelectionColumn && (
+                          <TableCell className={`${entriesBodyPadding} text-start border-r border-gray-100 dark:border-white/[0.05]`}>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(entry.id)}
+                              onChange={() => toggleSelected(entry.id)}
+                              aria-label="Sélectionner cette entrée"
+                            />
+                          </TableCell>
+                        )}
                         <TableCell
                           className={`${entriesBodyPadding} text-gray-500 text-start ${entriesTextSize} cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                           onClick={() => setViewingEntry(entry)}
@@ -861,7 +897,7 @@ export default function RegisterWorkspace({
                       <TableRow>
                         <TableCell
                           className="px-5 py-8 text-center text-gray-500 dark:text-gray-400"
-                          colSpan={sortedFields.length + 3}
+                          colSpan={sortedFields.length + (showSelectionColumn ? 3 : 2)}
                         >
                           {hasActiveFilters
                             ? "Aucune entrée ne correspond à ces filtres."
@@ -1039,6 +1075,15 @@ export default function RegisterWorkspace({
         entry={viewingEntry}
         fields={sortedFields}
         renderValue={renderEntryValue}
+      />
+
+      <PrintPreviewModal
+        isOpen={isPrintPreviewOpen}
+        onClose={() => setIsPrintPreviewOpen(false)}
+        registerName={register.name}
+        fields={sortedFields}
+        entries={displayedEntries}
+        resolveText={resolveDisplayValue}
       />
 
       <FieldFormModal

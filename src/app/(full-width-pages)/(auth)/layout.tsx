@@ -40,12 +40,6 @@ export default function AuthLayout({
                       className="object-contain p-1.5"
                     />
                   </span>
-                  <span className="text-2xl font-semibold tracking-wide text-white">
-                    {ORG_NAME}
-                  </span>
-                  <span className="text-sm font-medium text-gray-300 dark:text-white/70">
-                    Support logistique
-                  </span>
                 </Link>
               </div>
             </div>
