@@ -454,8 +454,12 @@ export default function RegisterWorkspace({
     : [];
   const barcodeField = sortedFields.find((f) => f.type === "barcode") ?? null;
   // Compact, Excel-like padding - just enough margin around the content.
-  const entriesHeaderPadding = "px-3 py-2";
-  const entriesBodyPadding = "px-3 py-1.5";
+  const entriesHeaderPadding = "px-2 py-1";
+  const entriesBodyPadding = "px-2 py-1";
+  // Fullscreen must fit every column with no horizontal scroll - shrinking
+  // the text a bit further (on top of compressing the columns themselves)
+  // buys extra room for that.
+  const entriesTextSize = isFullscreen ? "text-[10px]" : "text-theme-xs";
 
   /** The filter checklist for a "choice" field: a reference-select's
    * resolved {value, label} options if it's wired to another register,
@@ -744,13 +748,13 @@ export default function RegisterWorkspace({
           ) : (
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
               <div className="max-w-full overflow-x-auto">
-                <Table className="table-fixed">
+                <Table className={isFullscreen ? "table-fixed w-full" : "table-fixed"}>
                   <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                     <TableRow>
                       <TableCell
                         isHeader
                         style={{ width: CHECKBOX_COLUMN_WIDTH }}
-                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                       >
                         <input
                           type="checkbox"
@@ -762,7 +766,7 @@ export default function RegisterWorkspace({
                       <TableCell
                         isHeader
                         style={{ width: INDEX_COLUMN_WIDTH }}
-                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                       >
                         #
                       </TableCell>
@@ -770,8 +774,8 @@ export default function RegisterWorkspace({
                         <TableCell
                           key={field.id}
                           isHeader
-                          style={{ width: columnWidths[field.key] ?? autoColumnWidth(field.label) }}
-                          className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                          style={isFullscreen ? undefined : { width: columnWidths[field.key] ?? autoColumnWidth(field.label) }}
+                          className={`${entriesHeaderPadding} font-medium text-gray-500 text-start ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                         >
                           <ColumnHeaderCell
                             label={field.label}
@@ -791,7 +795,7 @@ export default function RegisterWorkspace({
                       <TableCell
                         isHeader
                         style={{ width: ACTIONS_COLUMN_WIDTH }}
-                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400`}
+                        className={`${entriesHeaderPadding} sticky right-0 border-l border-gray-100 bg-gray-50 font-medium text-gray-500 text-start ${entriesTextSize} dark:border-white/[0.05] dark:bg-gray-900 dark:text-gray-400`}
                       >
                         Actions
                       </TableCell>
@@ -809,7 +813,7 @@ export default function RegisterWorkspace({
                           />
                         </TableCell>
                         <TableCell
-                          className={`${entriesBodyPadding} text-gray-500 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                          className={`${entriesBodyPadding} text-gray-500 text-start ${entriesTextSize} cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                           onClick={() => setViewingEntry(entry)}
                         >
                           {hasActiveFilters ? index + 1 : (page - 1) * perPage + index + 1}
@@ -817,7 +821,7 @@ export default function RegisterWorkspace({
                         {sortedFields.map((field) => (
                           <TableCell
                             key={field.id}
-                            className={`${entriesBodyPadding} text-gray-600 text-start text-theme-sm cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-300`}
+                            className={`${entriesBodyPadding} text-gray-600 text-start ${entriesTextSize} cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-300`}
                             onClick={() => setViewingEntry(entry)}
                           >
                             <div
@@ -828,7 +832,9 @@ export default function RegisterWorkspace({
                             </div>
                           </TableCell>
                         ))}
-                        <TableCell className={`${entriesBodyPadding} text-start`}>
+                        <TableCell
+                          className={`${entriesBodyPadding} sticky right-0 border-l border-gray-100 bg-white text-start dark:border-white/[0.05] dark:bg-gray-900`}
+                        >
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => {
