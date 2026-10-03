@@ -1,6 +1,5 @@
 "use client";
 import Input from "@/components/form/input/InputField";
-import TextArea from "@/components/form/input/TextArea";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
@@ -11,9 +10,17 @@ interface PasswordConfirmDialogProps {
   isOpen: boolean;
   title: string;
   description?: string;
-  requireReason?: boolean;
   confirmLabel?: string;
-  onConfirm: (password: string, reason: string) => Promise<void>;
+  /** Shows a fixed "this cannot be undone" banner - reserved for actions
+   * that have no way back, like permanently deleting an archived register. */
+  irreversible?: boolean;
+  /** When set, the user must retype this exact value (e.g. the register's
+   * name) before the action can be confirmed - a GitHub-style delete guard.
+   * Pasting into that field is blocked so it can't be filled from a copy of
+   * the name shown on screen. */
+  confirmValue?: string;
+  confirmValueLabel?: string;
+  onConfirm: (password: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -21,37 +28,46 @@ export default function PasswordConfirmDialog({
   isOpen,
   title,
   description,
-  requireReason = false,
   confirmLabel = "Confirmer",
+  irreversible = false,
+  confirmValue,
+  confirmValueLabel = "le nom",
   onConfirm,
   onClose,
 }: PasswordConfirmDialogProps) {
   const [password, setPassword] = useState("");
-  const [reason, setReason] = useState("");
+  const [typedConfirmValue, setTypedConfirmValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setPassword("");
-      setReason("");
+      setTypedConfirmValue("");
       setError(null);
     }
   }, [isOpen]);
 
+  const confirmValueMismatch =
+    confirmValue !== undefined && typedConfirmValue.trim() !== confirmValue;
+
+  function blockClipboard(e: React.ClipboardEvent<HTMLInputElement>) {
+    e.preventDefault();
+  }
+
   async function handleConfirm() {
-    if (!password) {
-      setError("Le mot de passe est obligatoire.");
+    if (confirmValueMismatch) {
+      setError(`Le texte saisi ne correspond pas à ${confirmValueLabel}.`);
       return;
     }
-    if (requireReason && !reason.trim()) {
-      setError("La raison est obligatoire.");
+    if (!password) {
+      setError("Le mot de passe est obligatoire.");
       return;
     }
     setIsSubmitting(true);
     setError(null);
     try {
-      await onConfirm(password, reason.trim());
+      await onConfirm(password);
       onClose();
     } catch (err) {
       setError(
@@ -72,17 +88,31 @@ export default function PasswordConfirmDialog({
           {description}
         </p>
       )}
+      {irreversible && (
+        <div className="mb-4 rounded-lg border border-error-500 bg-error-50 px-4 py-2 text-sm font-medium text-error-600 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
+          ⚠ Cette action est irréversible et ne pourra pas être annulée.
+        </div>
+      )}
       {error && (
         <div className="mb-4 rounded-lg border border-error-500 bg-error-50 px-4 py-2 text-sm text-error-600 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
           {error}
         </div>
       )}
-      {requireReason && (
+      {confirmValue !== undefined && (
         <div className="mb-4">
           <Label>
-            Raison <span className="text-error-500">*</span>
+            Tapez {confirmValueLabel} (<span className="font-semibold">{confirmValue}</span>) pour confirmer{" "}
+            <span className="text-error-500">*</span>
           </Label>
-          <TextArea rows={3} value={reason} onChange={setReason} />
+          <Input
+            type="text"
+            autoComplete="off"
+            defaultValue={typedConfirmValue}
+            onChange={(e) => setTypedConfirmValue(e.target.value)}
+            onPaste={blockClipboard}
+            onCopy={blockClipboard}
+            onCut={blockClipboard}
+          />
         </div>
       )}
       <div className="mb-5">
@@ -104,7 +134,7 @@ export default function PasswordConfirmDialog({
           size="sm"
           className="!bg-error-500 hover:!bg-error-600"
           onClick={handleConfirm}
-          disabled={isSubmitting}
+          disabled={isSubmitting || confirmValueMismatch}
         >
           {isSubmitting ? "..." : confirmLabel}
         </Button>

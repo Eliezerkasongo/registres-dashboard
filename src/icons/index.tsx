@@ -54,6 +54,8 @@ import BellIcon from "./bell.svg";
 import HomeIcon from "./home-line.svg";
 import SettingsIcon from "./settings-line.svg";
 import FullscreenIcon from "./fullscreen-line.svg";
+import PrinterIcon from "./print.svg";
+import BarcodeIcon from "./barcode.svg";
 
 export {
   DownloadIcon,
@@ -112,4 +114,6 @@ export {
   HomeIcon,
   SettingsIcon,
   FullscreenIcon,
+  PrinterIcon,
+  BarcodeIcon,
 };

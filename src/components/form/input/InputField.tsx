@@ -1,4 +1,5 @@
-import React, { FC } from "react";
+import { EyeCloseIcon, EyeIcon } from "@/icons";
+import React, { FC, useState } from "react";
 
 interface InputProps {
   type?: "text" | "number" | "email" | "password" | "date" | "time" | string;
@@ -6,7 +7,26 @@ interface InputProps {
   name?: string;
   placeholder?: string;
   defaultValue?: string | number;
+  /** Controlled mode: takes over from defaultValue entirely, so the shown
+   * text always tracks the caller's state exactly - needed for a form
+   * reused across different records (an entry form open for entry A, then
+   * reused for entry B without unmounting in between), where defaultValue's
+   * "read once at mount" behavior would otherwise leave the previous
+   * record's value on screen. */
+  value?: string | number;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onPaste?: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+  onCopy?: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+  onCut?: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+  // Off by default everywhere - a field the app itself pre-fills (defaultValue)
+  // or that always takes a fresh value (search boxes, one-off confirmations)
+  // has no business being offered for browser autofill/autocomplete. A
+  // password field gets "new-password" instead (see below) - Chrome/Firefox
+  // are well documented to silently ignore autocomplete="off" specifically
+  // on password inputs, still offering their saved-password autofill and the
+  // "save this password?" prompt regardless; "new-password" is the value
+  // they actually honor to suppress both.
+  autoComplete?: string;
   className?: string;
   min?: string;
   max?: string;
@@ -23,7 +43,12 @@ const Input: FC<InputProps> = ({
   name,
   placeholder,
   defaultValue,
+  value,
   onChange,
+  onPaste,
+  onCopy,
+  onCut,
+  autoComplete,
   className = "",
   min,
   max,
@@ -33,8 +58,19 @@ const Input: FC<InputProps> = ({
   error = false,
   hint,
 }) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const resolvedAutoComplete = autoComplete ?? (isPassword ? "new-password" : "off");
+  // React warns if both value and defaultValue are passed - only one may
+  // reach the DOM node, chosen by whether the caller opted into controlled
+  // mode.
+  const valueProps =
+    value !== undefined ? { value } : { defaultValue };
+
   // Determine input styles based on state (disabled, success, error)
-  let inputClasses = `h-9 w-full rounded-lg border appearance-none px-3 py-1.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800 ${className}`;
+  let inputClasses = `h-9 w-full rounded-lg border appearance-none px-3 py-1.5 text-sm shadow-theme-xs placeholder:text-gray-400 focus:outline-hidden focus:ring-3 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800 ${
+    isPassword ? "pr-10" : ""
+  } ${className}`;
 
   // Add styles for the different states
   if (disabled) {
@@ -50,18 +86,38 @@ const Input: FC<InputProps> = ({
   return (
     <div className="relative">
       <input
-        type={type}
+        type={isPassword ? (showPassword ? "text" : "password") : type}
         id={id}
         name={name}
         placeholder={placeholder}
-        defaultValue={defaultValue}
+        {...valueProps}
         onChange={onChange}
+        onPaste={onPaste}
+        onCopy={onCopy}
+        onCut={onCut}
+        autoComplete={resolvedAutoComplete}
         min={min}
         max={max}
         step={step}
         disabled={disabled}
         className={inputClasses}
       />
+
+      {isPassword && (
+        <button
+          type="button"
+          onClick={() => setShowPassword((v) => !v)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+          tabIndex={-1}
+        >
+          {showPassword ? (
+            <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
+          ) : (
+            <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
+          )}
+        </button>
+      )}
 
       {/* Optional Hint Text */}
       {hint && (

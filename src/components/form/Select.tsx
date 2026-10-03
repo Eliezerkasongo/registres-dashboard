@@ -11,22 +11,32 @@ interface SelectProps {
   onChange: (value: string) => void;
   className?: string;
   defaultValue?: string;
+  /** Controlled mode: takes over from defaultValue's own internal state
+   * entirely, so the shown value always tracks the caller's state exactly -
+   * needed for a form reused across different records (an entry form open
+   * for entry A, then reused for entry B without unmounting in between),
+   * where defaultValue's "read once at mount" behavior would otherwise
+   * leave the previous record's value on screen. */
+  value?: string;
 }
 
 const Select: React.FC<SelectProps> = ({
   options,
-  placeholder = "Select an option",
+  placeholder = "Choisir",
   onChange,
   className = "",
   defaultValue = "",
+  value,
 }) => {
-  // Manage the selected value
-  const [selectedValue, setSelectedValue] = useState<string>(defaultValue);
+  const isControlled = value !== undefined;
+  // Manage the selected value (uncontrolled mode only)
+  const [uncontrolledValue, setUncontrolledValue] = useState<string>(defaultValue);
+  const selectedValue = isControlled ? value : uncontrolledValue;
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setSelectedValue(value);
-    onChange(value); // Trigger parent handler
+    const next = e.target.value;
+    if (!isControlled) setUncontrolledValue(next);
+    onChange(next); // Trigger parent handler
   };
 
   return (

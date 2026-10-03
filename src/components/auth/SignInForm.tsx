@@ -4,12 +4,10 @@ import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/api/client";
-import { EyeCloseIcon, EyeIcon } from "@/icons";
 import { useRouter } from "next/navigation";
 import React, { useState } from "react";
 
 export default function SignInForm() {
-  const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +45,7 @@ export default function SignInForm() {
             </p>
           </div>
           <div>
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} autoComplete="off">
               <div className="space-y-6">
                 {error && (
                   <div className="rounded-lg border border-error-500 bg-error-50 px-4 py-3 text-sm text-error-600 dark:border-error-500/30 dark:bg-error-500/15 dark:text-error-400">
@@ -69,24 +67,12 @@ export default function SignInForm() {
                   <Label>
                     Mot de passe <span className="text-error-500">*</span>{" "}
                   </Label>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      placeholder="Votre mot de passe"
-                      defaultValue={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-                    <span
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute z-30 -translate-y-1/2 cursor-pointer right-4 top-1/2"
-                    >
-                      {showPassword ? (
-                        <EyeIcon className="fill-gray-500 dark:fill-gray-400" />
-                      ) : (
-                        <EyeCloseIcon className="fill-gray-500 dark:fill-gray-400" />
-                      )}
-                    </span>
-                  </div>
+                  <Input
+                    type="password"
+                    placeholder="Votre mot de passe"
+                    defaultValue={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </div>
                 <div>
                   <Button

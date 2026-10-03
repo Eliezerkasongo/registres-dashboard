@@ -83,6 +83,16 @@ export default function PrintPreviewModal({
             max-height: none !important;
             overflow: visible !important;
           }
+          /* visibility: hidden above only hides paint - it does NOT remove
+           * layout height, so every static-flow element behind this modal
+           * (the app shell's min-h-screen floor, the sticky AppHeader, and
+           * RegisterWorkspace's own header/tabs/table for whichever tab is
+           * open) still occupies real vertical space, invisibly, adding
+           * that many extra blank pages after the real printed content.
+           * display: none actually collapses their box, unlike visibility. */
+          .min-h-screen { min-height: 0 !important; }
+          header { display: none !important; }
+          .no-print { display: none !important; }
           #print-preview-area {
             position: absolute !important;
             top: 0; left: 0;
@@ -116,6 +126,13 @@ export default function PrintPreviewModal({
            * split mid-row - its bottom half bleeding onto the next page
            * and visually blending with whatever starts there. */
           #print-preview-area tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          /* Keep the signature footer on one page, and never let it print
+           * squeezed onto page 1 above the table - it belongs at the very
+           * end of the document. */
+          #print-preview-area .signature-footer {
             break-inside: avoid;
             page-break-inside: avoid;
           }
@@ -203,6 +220,29 @@ export default function PrintPreviewModal({
               )}
             </tbody>
           </table>
+
+          {/* Signature footer - names and signatures are filled in by hand
+           * on the printed sheet, never captured digitally. Sized to its
+           * own content (not stretched to the page width) with an actual
+           * bordered box to sign inside, rather than just a ruled line. */}
+          <div className="signature-footer mt-10 flex flex-wrap gap-20 text-sm text-black">
+            <div>
+              <div className="mb-3">
+                <span className="font-semibold">Préparé par :</span>{" "}
+                <span className="inline-block w-56 border-b border-black">&nbsp;</span>
+              </div>
+              <div className="mb-1">Signature</div>
+              <div className="h-16 w-64 border border-black"></div>
+            </div>
+            <div>
+              <div className="mb-3">
+                <span className="font-semibold">Vérifié par :</span>{" "}
+                <span className="inline-block w-56 border-b border-black">&nbsp;</span>
+              </div>
+              <div className="mb-1">Signature</div>
+              <div className="h-16 w-64 border border-black"></div>
+            </div>
+          </div>
         </div>
       </div>
     </Modal>

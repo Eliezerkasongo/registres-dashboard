@@ -10,6 +10,7 @@ import type {
   ListMeta,
   RegisterDetail,
   RegisterSummary,
+  RegisterVisibilityGrant,
 } from "./types";
 
 export async function listRegisters(): Promise<RegisterSummary[]> {
@@ -20,6 +21,14 @@ export async function listRegisters(): Promise<RegisterSummary[]> {
 export async function listArchivedRegisters(): Promise<RegisterSummary[]> {
   const res = await apiRequest<{ data: RegisterSummary[] }>(
     "/registers/archived"
+  );
+  return res.data;
+}
+
+/** Corbeille: registers deleted for good - read-only, no restore route. */
+export async function listDeletedRegisters(): Promise<RegisterSummary[]> {
+  const res = await apiRequest<{ data: RegisterSummary[] }>(
+    "/registers/deleted"
   );
   return res.data;
 }
@@ -126,12 +135,11 @@ export async function restoreRegister(id: number): Promise<RegisterDetail> {
 
 export async function deleteRegister(
   id: number,
-  password: string,
-  reason: string
+  password: string
 ): Promise<void> {
   await apiRequest<void>(`/registers/${id}`, {
     method: "DELETE",
-    body: { password, reason },
+    body: { password },
   });
 }
 
@@ -160,10 +168,12 @@ export async function updateField(
 
 export async function deleteField(
   registerId: number,
-  fieldId: number
+  fieldId: number,
+  password: string
 ): Promise<void> {
   await apiRequest<void>(`/registers/${registerId}/fields/${fieldId}`, {
     method: "DELETE",
+    body: { password },
   });
 }
 
@@ -217,13 +227,25 @@ export async function updateEntry(
 export async function deleteEntry(
   registerId: number,
   entryId: number,
-  password: string,
-  reason: string
+  password: string
 ): Promise<void> {
   await apiRequest<void>(`/registers/${registerId}/entries/${entryId}`, {
     method: "DELETE",
-    body: { password, reason },
+    body: { password },
   });
+}
+
+/** Marks an entry as reviewed and trustworthy - only then can it be used as
+ * a cross-register reference value elsewhere. */
+export async function validateEntry(
+  registerId: number,
+  entryId: number
+): Promise<Entry> {
+  const res = await apiRequest<{ data: Entry }>(
+    `/registers/${registerId}/entries/${entryId}/validate`,
+    { method: "POST" }
+  );
+  return res.data;
 }
 
 export async function entryHistory(
@@ -232,6 +254,13 @@ export async function entryHistory(
   const res = await apiRequest<{ data: DeletedEntry[] }>(
     `/registers/${registerId}/entries/history`
   );
+  return res.data;
+}
+
+/** Corbeille: deleted entries across every register of the tenant - read-only,
+ * no restore route. */
+export async function entryTrash(): Promise<DeletedEntry[]> {
+  const res = await apiRequest<{ data: DeletedEntry[] }>("/entries/deleted");
   return res.data;
 }
 
@@ -245,4 +274,26 @@ export async function uploadEntryFile(
     `/registers/${registerId}/entries/upload`,
     formData
   );
+}
+
+/** Admin-only: every tenant member alongside whether they currently see
+ * this register's full data or only their own. */
+export async function listRegisterVisibility(
+  registerId: number
+): Promise<RegisterVisibilityGrant[]> {
+  const res = await apiRequest<{ data: RegisterVisibilityGrant[] }>(
+    `/registers/${registerId}/visibility`
+  );
+  return res.data;
+}
+
+export async function setRegisterVisibility(
+  registerId: number,
+  userId: number,
+  canViewAll: boolean
+): Promise<void> {
+  await apiRequest<void>(`/registers/${registerId}/visibility/${userId}`, {
+    method: "PUT",
+    body: { can_view_all: canViewAll },
+  });
 }

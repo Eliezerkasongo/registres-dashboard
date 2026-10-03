@@ -214,6 +214,7 @@ export default function ColumnHeaderCell({
             <input
               type="text"
               autoFocus
+              autoComplete="off"
               value={draftText}
               onChange={(e) => setDraftText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && applyFilter()}

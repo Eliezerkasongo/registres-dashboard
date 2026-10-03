@@ -52,9 +52,9 @@ export default function ArchivesPage() {
     }
   }
 
-  async function handleDelete(password: string, reason: string) {
+  async function handleDelete(password: string) {
     if (!pendingDelete) return;
-    await deleteRegister(pendingDelete.id, password, reason);
+    await deleteRegister(pendingDelete.id, password);
     toast.success("Registre supprimé", `"${pendingDelete.name}" a été supprimé.`);
     setPendingDelete(null);
     await load();
@@ -128,10 +128,12 @@ export default function ArchivesPage() {
         title="Supprimer le registre"
         description={
           pendingDelete
-            ? `"${pendingDelete.name}" et ses ${pendingDelete.entries_count} entrée(s) seront masqués définitivement. Confirmez avec votre mot de passe et indiquez la raison.`
+            ? `"${pendingDelete.name}" et ses ${pendingDelete.entries_count} entrée(s) seront masqués définitivement.`
             : undefined
         }
-        requireReason
+        irreversible
+        confirmValue={pendingDelete?.name ?? ""}
+        confirmValueLabel="le nom du registre"
         confirmLabel="Supprimer"
         onConfirm={handleDelete}
         onClose={() => setPendingDelete(null)}

@@ -47,7 +47,7 @@ export default function ChangePasswordForm() {
 
   return (
     <ComponentCard title="Mot de passe" desc="Laissez le mot de passe actuel vide si aucun mot de passe n'a encore été défini pour ce compte.">
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off">
         <div>
           <Label>Mot de passe actuel</Label>
           <Input

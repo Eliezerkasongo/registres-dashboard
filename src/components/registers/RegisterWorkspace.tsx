@@ -7,6 +7,8 @@ import EntryViewModal from "@/components/registers/EntryViewModal";
 import FieldFormModal from "@/components/registers/FieldFormModal";
 import PasswordConfirmDialog from "@/components/registers/PasswordConfirmDialog";
 import PrintPreviewModal from "@/components/registers/PrintPreviewModal";
+import RegisterVisibilityPanel from "@/components/registers/RegisterVisibilityPanel";
+import { AnomalyTriangleIcon, PendingClockIcon, ValidatedCheckIcon } from "@/components/registers/ValidationStatusIcons";
 import Input from "@/components/form/input/InputField";
 import Select from "@/components/form/Select";
 import Badge from "@/components/ui/badge/Badge";
@@ -39,17 +41,19 @@ import {
   updateEntry,
   updateField,
   updateRegister,
+  validateEntry,
 } from "@/lib/api/registers";
 import { resolveAssetUrl } from "@/lib/utils/assetUrl";
 import type {
   DeletedEntry,
   Entry,
+  EntryAnomaly,
   Field,
   FieldInput,
   FieldOption,
   RegisterDetail,
 } from "@/lib/api/types";
-import { FullscreenIcon, PencilIcon, PlusIcon, TrashBinIcon } from "@/icons";
+import { BarcodeIcon, DownloadIcon, PencilIcon, PlusIcon, PrinterIcon, TrashBinIcon } from "@/icons";
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
@@ -63,7 +67,139 @@ const MIN_AUTO_COLUMN_WIDTH = 96;
 const MAX_AUTO_COLUMN_WIDTH = 320;
 const CHECKBOX_COLUMN_WIDTH = 44;
 const INDEX_COLUMN_WIDTH = 56;
+const STATUS_COLUMN_WIDTH = 44;
 const ACTIONS_COLUMN_WIDTH = 92;
+
+/** Highest-severity color for the anomaly triangle - low/medium both read as
+ * "worth a look" (amber, two intensities), high as "likely a real problem" (red). */
+function anomalySeverityClass(anomalies: EntryAnomaly[]): string {
+  if (anomalies.some((a) => a.severity === "high")) return "text-error-500";
+  if (anomalies.some((a) => a.severity === "medium")) return "text-warning-600 dark:text-orange-400";
+  return "text-warning-400";
+}
+
+function anomalyTooltip(anomalies: EntryAnomaly[]): string {
+  return anomalies.map((a) => a.message).join("\n");
+}
+
+// The Validation column isn't a real field (its value lives on the entry
+// itself, not in entry.data), so it gets a reserved columnFilters key
+// instead of a field key - special-cased wherever entry.data[key] would
+// normally be read for filtering.
+const VALIDATION_FILTER_KEY = "__validation_status";
+const VALIDATION_FILTER_OPTIONS: ColumnFilterOption[] = [
+  { value: "pending", label: "En attente" },
+  { value: "validated", label: "Validé" },
+];
+
+/** Minimal choice-filter popover for the Validation column - same look as
+ * ColumnHeaderCell's filter, without the resize handle or sort control that
+ * don't apply to this synthetic column. */
+function ValidationFilterButton({
+  value,
+  onChange,
+  isOpen,
+  onOpenChange,
+}: {
+  value: string[];
+  onChange: (value: string[]) => void;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [draft, setDraft] = useState<string[]>(value);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen) setDraft(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onOpenChange(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen, onOpenChange]);
+
+  function toggle(v: string) {
+    setDraft((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+  }
+
+  const isActive = value.length > 0;
+
+  return (
+    <div className="relative flex items-center justify-center">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenChange(!isOpen);
+        }}
+        className={`shrink-0 rounded p-0.5 ${
+          isActive
+            ? "text-brand-500"
+            : "text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
+        }`}
+        title="Validation"
+        aria-label="Filtrer par validation"
+      >
+        <svg viewBox="0 0 16 16" fill="none" className="h-3.5 w-3.5" aria-hidden="true">
+          <path
+            d="M1.5 2.5h13L9.5 8.2v4.6l-3 1.7V8.2L1.5 2.5Z"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div
+          ref={popoverRef}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-gray-200 bg-white p-3 text-xs font-normal normal-case shadow-lg dark:border-gray-700 dark:bg-gray-900"
+        >
+          <div className="space-y-1.5">
+            {VALIDATION_FILTER_OPTIONS.map((opt) => (
+              <label key={opt.value} className="flex cursor-pointer items-center gap-2">
+                <input type="checkbox" checked={draft.includes(opt.value)} onChange={() => toggle(opt.value)} />
+                <span className="truncate text-gray-700 dark:text-gray-300">{opt.label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft([]);
+                onChange([]);
+                onOpenChange(false);
+              }}
+              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              Effacer
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(draft);
+                onOpenChange(false);
+              }}
+              className="rounded bg-brand-500 px-2.5 py-1 font-medium text-white hover:bg-brand-600"
+            >
+              Appliquer
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 // When a column filter is active, up to this many entries are fetched (the
 // API's own per-request cap) so filtering isn't limited to just the
 // currently-displayed page - there's no server-side filtering endpoint, so
@@ -88,6 +224,32 @@ function GripIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/** Fullscreen toggle glyph: two diagonal arrows pointing away from each
+ * other (enter fullscreen) or toward each other (exit) - drawn at its
+ * actual display size rather than scaled down from a larger source icon. */
+function ExpandDiagonalIcon({ className }: { className?: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <polyline points="10,2 14,2 14,6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="14" y1="2" x2="9.3" y2="6.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <polyline points="6,14 2,14 2,10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="2" y1="14" x2="6.7" y2="9.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CollapseDiagonalIcon({ className }: { className?: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <polyline points="2.7,9.3 6.7,9.3 6.7,13.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="6.7" y1="9.3" x2="2" y2="14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <polyline points="13.3,6.7 9.3,6.7 9.3,2.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="9.3" y1="6.7" x2="14" y2="2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const PER_PAGE_OPTIONS = [
   { value: "10", label: "10" },
   { value: "20", label: "20" },
@@ -96,7 +258,7 @@ const PER_PAGE_OPTIONS = [
   { value: "100", label: "100" },
 ];
 
-type Tab = "entries" | "fields" | "history";
+type Tab = "entries" | "fields" | "history" | "visibility";
 type PendingFieldDelete = { id: number };
 
 interface RegisterWorkspaceProps {
@@ -308,7 +470,7 @@ export default function RegisterWorkspace({
   const filteredEntries = hasActiveFilters
     ? (filterableEntries ?? []).filter((entry) =>
         Object.entries(columnFilters).every(([key, filterVal]) => {
-          const raw = entry.data[key];
+          const raw = key === VALIDATION_FILTER_KEY ? entry.validation_status : entry.data[key];
           if (Array.isArray(filterVal)) {
             if (filterVal.length === 0) return true;
             return filterVal.includes(String(raw ?? ""));
@@ -500,10 +662,10 @@ export default function RegisterWorkspace({
     }
   }
 
-  async function handleDeleteEntries(password: string, reason: string) {
+  async function handleDeleteEntries(password: string) {
     if (!pendingEntryDeletes || pendingEntryDeletes.length === 0) return;
     for (const entry of pendingEntryDeletes) {
-      await deleteEntry(registerId, entry.id, password, reason);
+      await deleteEntry(registerId, entry.id, password);
     }
     toast.success(
       pendingEntryDeletes.length > 1
@@ -514,10 +676,26 @@ export default function RegisterWorkspace({
     await loadEntries();
   }
 
+  async function handleValidateEntry(entry: Entry) {
+    try {
+      const updated = await validateEntry(registerId, entry.id);
+      toast.success("Entrée validée");
+      // Keeps the details modal in sync immediately, without waiting for it
+      // to be closed and reopened - viewingEntry is a snapshot, not derived
+      // from `entries`, so loadEntries() alone wouldn't refresh it.
+      setViewingEntry((prev) => (prev && prev.id === entry.id ? updated : prev));
+      await loadEntries();
+    } catch (err) {
+      toast.error(
+        "Validation impossible",
+        err instanceof ApiError ? err.message : "Une erreur est survenue."
+      );
+    }
+  }
+
   async function handleConfirmFieldDelete(password: string) {
-    if (!pendingFieldDelete || !user) return;
-    await verifyPassword(user.email, password);
-    await deleteField(registerId, pendingFieldDelete.id);
+    if (!pendingFieldDelete) return;
+    await deleteField(registerId, pendingFieldDelete.id, password);
     toast.success("Champ supprimé");
     setPendingFieldDelete(null);
     await loadRegister();
@@ -578,6 +756,32 @@ export default function RegisterWorkspace({
   // the text a bit further (on top of compressing the columns themselves)
   // buys extra room for that.
   const entriesTextSize = isFullscreen ? "text-[10px]" : "text-theme-xs";
+
+  // table-layout:fixed never shrinks columns to fit - a table's rendered
+  // width is the *greater* of its own specified width (100% via w-full) and
+  // the sum of its column widths, never less. So in fullscreen, field
+  // columns can't keep their normal pixel widths (their sum routinely
+  // exceeds the screen for a register with many fields, which is exactly
+  // what forced the horizontal scroll instead of "all columns visible").
+  // Dividing the space actually left over after the fixed-width columns
+  // equally between the field columns, in pure CSS, is what actually makes
+  // every column fit with no scrollbar - down to a floor of
+  // MIN_FULLSCREEN_FIELD_COLUMN_WIDTH, below which a truncated label stops
+  // being readable at all. The header's own chrome (sort icon + filter icon
+  // + their gaps + cell padding) already eats ~64px on its own, so the
+  // floor needs real headroom past that to leave ~5+ actual label
+  // characters visible, not just one. Past this floor, a register with
+  // enough fields falls back to the normal horizontal scroll rather than
+  // pretend-fit unreadable columns.
+  const MIN_FULLSCREEN_FIELD_COLUMN_WIDTH = 120;
+  const fixedColumnsWidth =
+    (showSelectionColumn ? CHECKBOX_COLUMN_WIDTH : 0) +
+    INDEX_COLUMN_WIDTH +
+    STATUS_COLUMN_WIDTH +
+    ACTIONS_COLUMN_WIDTH;
+  function fullscreenFieldColumnWidth(fieldCount: number): string {
+    return `max(${MIN_FULLSCREEN_FIELD_COLUMN_WIDTH}px, calc((100% - ${fixedColumnsWidth}px) / ${Math.max(fieldCount, 1)}))`;
+  }
 
   /** The filter checklist for a "choice" field: a reference-select's
    * resolved {value, label} options if it's wired to another register,
@@ -683,11 +887,11 @@ export default function RegisterWorkspace({
       }
     >
       <div
-        className={
+        className={`no-print ${
           isFullscreen
             ? "sticky top-0 z-10 bg-white px-4 pt-4 dark:bg-gray-900"
-            : undefined
-        }
+            : ""
+        }`}
       >
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -697,14 +901,33 @@ export default function RegisterWorkspace({
             {register.is_main && <Badge color="success">Principal</Badge>}
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={isExporting} onClick={handleExport}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isExporting}
+              onClick={handleExport}
+              startIcon={<DownloadIcon />}
+            >
               {isExporting ? "Export en cours..." : "Exporter"}
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => setIsPrintPreviewOpen(true)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setIsPrintPreviewOpen(true)}
+              startIcon={<PrinterIcon />}
+            >
               Imprimer
             </Button>
             {barcodeField && (
-              <Button type="button" size="sm" variant="outline" onClick={() => setBarcodeExportEntries(entries)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setBarcodeExportEntries(entries)}
+                startIcon={<BarcodeIcon />}
+              >
                 Codes-barres
               </Button>
             )}
@@ -723,14 +946,6 @@ export default function RegisterWorkspace({
                 •••
               </button>
               <Dropdown isOpen={isActionsMenuOpen} onClose={() => setIsActionsMenuOpen(false)} className="w-56 p-1">
-                <DropdownItem
-                  onItemClick={() => setIsActionsMenuOpen(false)}
-                  onClick={toggleFullscreen}
-                  className="flex items-center gap-2"
-                >
-                  <FullscreenIcon className="h-4 w-4" />
-                  {isFullscreen ? "Quitter le plein écran" : "Plein écran"}
-                </DropdownItem>
                 <DropdownItem onItemClick={() => setIsActionsMenuOpen(false)} onClick={() => setIsEditRegisterOpen(true)}>
                   Modifier le registre
                 </DropdownItem>
@@ -783,10 +998,22 @@ export default function RegisterWorkspace({
           >
             Historique
           </button>
+          {user?.role === "admin" && (
+            <button
+              onClick={() => setActiveTab("visibility")}
+              className={`px-2 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === "visibility"
+                  ? "border-brand-500 text-brand-500"
+                  : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              }`}
+            >
+              Visibilité
+            </button>
+          )}
         </div>
       </div>
 
-      <div className={isFullscreen ? "px-4 pb-4" : undefined}>
+      <div className={`no-print ${isFullscreen ? "px-4 pb-4" : ""}`}>
 
       {activeTab === "entries" && (
         <div>
@@ -837,6 +1064,15 @@ export default function RegisterWorkspace({
                 }
               >
                 ☑
+              </button>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-white/5"
+                aria-label={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+                title={isFullscreen ? "Quitter le plein écran" : "Plein écran"}
+              >
+                {isFullscreen ? <CollapseDiagonalIcon /> : <ExpandDiagonalIcon />}
               </button>
             </div>
             <Button
@@ -900,6 +1136,14 @@ export default function RegisterWorkspace({
           ) : (
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
               <div className="max-w-full overflow-x-auto">
+                {/* Every column below always gets an explicit pixel width
+                    (never `undefined`, which used to let the browser hand
+                    out leftover space unpredictably and collapse some
+                    columns to nothing). In fullscreen, `w-full` on a
+                    table-fixed table scales every one of those explicit
+                    widths proportionally to fill the screen exactly - so
+                    every column stays visible, none is dropped, and none
+                    needs a horizontal scrollbar. */}
                 <Table className={isFullscreen ? "table-fixed w-full" : "table-fixed"}>
                   <TableHeader className="border-b border-gray-100 bg-gray-50 dark:border-white/[0.05] dark:bg-white/[0.03]">
                     <TableRow>
@@ -920,15 +1164,37 @@ export default function RegisterWorkspace({
                       <TableCell
                         isHeader
                         style={{ width: INDEX_COLUMN_WIDTH }}
-                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-start ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-center ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                       >
                         #
+                      </TableCell>
+                      <TableCell
+                        isHeader
+                        style={{ width: STATUS_COLUMN_WIDTH }}
+                        className={`${entriesHeaderPadding} font-medium text-gray-500 text-center ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                      >
+                        <ValidationFilterButton
+                          value={
+                            Array.isArray(columnFilters[VALIDATION_FILTER_KEY])
+                              ? (columnFilters[VALIDATION_FILTER_KEY] as string[])
+                              : []
+                          }
+                          onChange={(value) =>
+                            setColumnFilters((prev) => ({ ...prev, [VALIDATION_FILTER_KEY]: value }))
+                          }
+                          isOpen={openFilterKey === VALIDATION_FILTER_KEY}
+                          onOpenChange={(open) => setOpenFilterKey(open ? VALIDATION_FILTER_KEY : null)}
+                        />
                       </TableCell>
                       {sortedFields.map((field) => (
                         <TableCell
                           key={field.id}
                           isHeader
-                          style={isFullscreen ? undefined : { width: columnWidths[field.key] ?? autoColumnWidth(field.label) }}
+                          style={{
+                            width: isFullscreen
+                              ? fullscreenFieldColumnWidth(sortedFields.length)
+                              : columnWidths[field.key] ?? autoColumnWidth(field.label),
+                          }}
                           className={`${entriesHeaderPadding} font-medium text-gray-500 text-start ${entriesTextSize} whitespace-nowrap border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                         >
                           <ColumnHeaderCell
@@ -973,10 +1239,28 @@ export default function RegisterWorkspace({
                           </TableCell>
                         )}
                         <TableCell
-                          className={`${entriesBodyPadding} text-gray-500 text-start ${entriesTextSize} cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
+                          className={`${entriesBodyPadding} text-gray-500 text-center ${entriesTextSize} cursor-pointer border-r border-gray-100 dark:border-white/[0.05] dark:text-gray-400`}
                           onClick={() => setViewingEntry(entry)}
                         >
                           {needsEntryBatch ? index + 1 : (page - 1) * perPage + index + 1}
+                        </TableCell>
+                        <TableCell
+                          className={`${entriesBodyPadding} text-center border-r border-gray-100 dark:border-white/[0.05] cursor-pointer`}
+                          onClick={() => setViewingEntry(entry)}
+                        >
+                          {entry.anomalies.length > 0 ? (
+                            <span className={anomalySeverityClass(entry.anomalies)} title={anomalyTooltip(entry.anomalies)}>
+                              <AnomalyTriangleIcon />
+                            </span>
+                          ) : entry.validation_status === "pending" ? (
+                            <span className="text-warning-500" title="En attente de validation">
+                              <PendingClockIcon />
+                            </span>
+                          ) : (
+                            <span className="text-success-500" title="Validé">
+                              <ValidatedCheckIcon />
+                            </span>
+                          )}
                         </TableCell>
                         {sortedFields.map((field) => (
                           <TableCell
@@ -1021,7 +1305,7 @@ export default function RegisterWorkspace({
                       <TableRow>
                         <TableCell
                           className="px-5 py-8 text-center text-gray-500 dark:text-gray-400"
-                          colSpan={sortedFields.length + (showSelectionColumn ? 3 : 2)}
+                          colSpan={sortedFields.length + (showSelectionColumn ? 4 : 3)}
                         >
                           {hasActiveFilters
                             ? "Aucune entrée ne correspond à ces filtres."
@@ -1208,6 +1492,10 @@ export default function RegisterWorkspace({
           </div>
         </div>
       )}
+
+      {activeTab === "visibility" && user?.role === "admin" && (
+        <RegisterVisibilityPanel registerId={registerId} />
+      )}
       </div>
 
       <EntryFormModal
@@ -1225,6 +1513,7 @@ export default function RegisterWorkspace({
         entry={viewingEntry}
         fields={sortedFields}
         renderValue={renderEntryValue}
+        onValidate={handleValidateEntry}
       />
 
       <PrintPreviewModal
@@ -1277,7 +1566,6 @@ export default function RegisterWorkspace({
             : "Supprimer cette entrée ?"
         }
         description="Elles resteront consultables dans l'historique des suppressions."
-        requireReason
         confirmLabel="Supprimer"
         onConfirm={handleDeleteEntries}
         onClose={() => setPendingEntryDeletes(null)}

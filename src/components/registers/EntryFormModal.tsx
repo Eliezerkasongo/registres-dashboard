@@ -183,7 +183,7 @@ export default function EntryFormModal({
                     ? dynamicOptions[field.id] ?? []
                     : (field.options ?? []).map((opt) => ({ value: opt, label: opt }))
                 }
-                defaultValue={(formData[field.key] as string) ?? ""}
+                value={(formData[field.key] as string) ?? ""}
                 onChange={(value) => setValue(field.key, value)}
               />
             ) : field.type === "barcode" ? (
@@ -214,7 +214,7 @@ export default function EntryFormModal({
             ) : (
               <Input
                 type={field.type}
-                defaultValue={(formData[field.key] as string | number) ?? ""}
+                value={(formData[field.key] as string | number) ?? ""}
                 onChange={(e) => setValue(field.key, e.target.value)}
               />
             )}
